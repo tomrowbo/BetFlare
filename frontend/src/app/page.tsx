@@ -152,7 +152,7 @@ export default function Home() {
         <div className="max-w-6xl mx-auto px-4 py-6">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
             <div className="text-sm text-[--text-secondary]">
-              Powered by Flare FTSO Oracle • Built at ETH Oxford 2025
+              Powered by Flare FTSO Oracle • Built at ETHOxford 2025
             </div>
             <div className="flex gap-6 text-sm">
               <a href="https://faucet.flare.network/coston2" target="_blank" rel="noopener noreferrer" className="text-[--text-secondary] hover:text-[--accent-blue]">
