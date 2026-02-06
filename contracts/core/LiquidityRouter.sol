@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 
 interface IFPMM {
     function addLiquidity(uint256 amount) external;
@@ -18,9 +20,14 @@ interface IFPMM {
 /**
  * @title LiquidityRouter
  * @notice Manages liquidity deployment from UniversalVault to multiple FPMM markets
- * @dev Distributes liquidity equally across all active markets and handles rebalancing
+ * @dev UUPS upgradeable. Distributes liquidity equally across all active markets and handles rebalancing
  */
-contract LiquidityRouter is ReentrancyGuard, Ownable {
+contract LiquidityRouter is
+    Initializable,
+    ReentrancyGuardUpgradeable,
+    OwnableUpgradeable,
+    UUPSUpgradeable
+{
     using SafeERC20 for IERC20;
 
     address public vault;
@@ -54,9 +61,19 @@ contract LiquidityRouter is ReentrancyGuard, Ownable {
         _;
     }
 
-    constructor(address _usdt) Ownable(msg.sender) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address _usdt) public initializer {
+        __ReentrancyGuard_init();
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
         usdt = IERC20(_usdt);
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     // ============ Admin Functions ============
 

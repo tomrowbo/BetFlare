@@ -1,13 +1,13 @@
-// Contract addresses on Coston2
+// Contract addresses on Coston2 (UPGRADEABLE via UUPS)
 export const CONTRACTS = {
   usdt: '0xC1A5B41512496B80903D1f32d6dEa3a73212E71F',
   conditionalTokens: '0xCe9070d4C6940e7528b418cFB36087345f947c49',
   resolver: '0xd8B47D970077D6752111dd176Dd0cce558e91445',
-  fpmm: '0xE3F48E281e0F92fd87498EE897Af7eCfCf3d7FB3',
-  // Universal Vault System (immediate routing)
-  universalVault: '0x4F5Ac414560E8e14F9D63D4b7a644788882bf1b3',
-  vault: '0x4F5Ac414560E8e14F9D63D4b7a644788882bf1b3',
-  liquidityRouter: '0xb8308aDA08d7e6cAb007ed7ea0a8d4f05f6C9FEC',
+  fpmm: '0x9Fe173ec76c04d0198A14a29d61be81374A0B88E',
+  // Universal Vault System (immediate routing) - UUPS Proxies
+  universalVault: '0xB2569b2fbeA31A4f8ECaCF6Dd1fDC53157107F87',
+  vault: '0xB2569b2fbeA31A4f8ECaCF6Dd1fDC53157107F87',
+  liquidityRouter: '0xD6473a91aC0C62e6F2BC1FF60e02C59B0237b4ac',
 } as const;
 
 // FTSO Registry on Coston2

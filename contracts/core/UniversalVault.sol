@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "@openzeppelin/contracts/token/ERC20/extensions/ERC4626.sol";
+import "@openzeppelin/contracts-upgradeable/token/ERC20/extensions/ERC4626Upgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 
 interface ILiquidityRouter {
     function deployLiquidity(uint256 amount) external;
@@ -30,9 +33,15 @@ interface IBlazeSwapRouter {
 /**
  * @title UniversalVault
  * @notice ERC4626 vault that accepts USDT0 or XRP (auto-converted) and deploys liquidity to prediction markets
- * @dev LPs receive vault shares representing their proportional ownership of all deployed liquidity + fees
+ * @dev UUPS upgradeable. LPs receive vault shares representing their proportional ownership of all deployed liquidity + fees
  */
-contract UniversalVault is ERC4626, ReentrancyGuard, Ownable {
+contract UniversalVault is
+    Initializable,
+    ERC4626Upgradeable,
+    ReentrancyGuardUpgradeable,
+    OwnableUpgradeable,
+    UUPSUpgradeable
+{
     using SafeERC20 for IERC20;
 
     ILiquidityRouter public router;
@@ -50,9 +59,20 @@ contract UniversalVault is ERC4626, ReentrancyGuard, Ownable {
     event XRPDeposited(address indexed depositor, address indexed receiver, uint256 xrpAmount, uint256 usdtReceived, uint256 shares);
     event FeesReceived(address indexed market, uint256 amount);
 
-    constructor(
-        IERC20 _usdt
-    ) ERC4626(_usdt) ERC20("BetFlare LP", "bfLP") Ownable(msg.sender) {}
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(IERC20 _usdt) public initializer {
+        __ERC4626_init(_usdt);
+        __ERC20_init("BetFlare LP", "bfLP");
+        __ReentrancyGuard_init();
+        __Ownable_init(msg.sender);
+        __UUPSUpgradeable_init();
+    }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     // ============ Admin Functions ============
 

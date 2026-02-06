@@ -10,6 +10,10 @@ import "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import "./ConditionalTokens.sol";
 
+interface IUniversalVault {
+    function receiveFees(uint256 amount) external;
+}
+
 /**
  * @title FPMM - Fixed Product Market Maker
  * @notice AMM for trading YES/NO outcome tokens with gasless meta-transactions
@@ -138,9 +142,10 @@ contract FPMM is ERC1155Holder, ReentrancyGuard, EIP712 {
         // Transfer collateral from buyer
         collateralToken.safeTransferFrom(msg.sender, address(this), investmentAmount);
 
-        // Send fee to vault
+        // Send fee to vault (via receiveFees to track earnings)
         if (fee > 0 && vault != address(0)) {
-            collateralToken.safeTransfer(vault, fee);
+            collateralToken.approve(vault, fee);
+            IUniversalVault(vault).receiveFees(fee);
             emit FeesCollected(fee);
         }
 
@@ -182,9 +187,10 @@ contract FPMM is ERC1155Holder, ReentrancyGuard, EIP712 {
         // Transfer collateral from buyer
         collateralToken.safeTransferFrom(msg.sender, address(this), investmentAmount);
 
-        // Send fee to vault
+        // Send fee to vault (via receiveFees to track earnings)
         if (fee > 0 && vault != address(0)) {
-            collateralToken.safeTransfer(vault, fee);
+            collateralToken.approve(vault, fee);
+            IUniversalVault(vault).receiveFees(fee);
             emit FeesCollected(fee);
         }
 
@@ -280,7 +286,8 @@ contract FPMM is ERC1155Holder, ReentrancyGuard, EIP712 {
         collateralToken.safeTransferFrom(user, address(this), investmentAmount);
 
         if (fee > 0 && vault != address(0)) {
-            collateralToken.safeTransfer(vault, fee);
+            collateralToken.approve(vault, fee);
+            IUniversalVault(vault).receiveFees(fee);
             emit FeesCollected(fee);
         }
 
@@ -307,7 +314,8 @@ contract FPMM is ERC1155Holder, ReentrancyGuard, EIP712 {
         collateralToken.safeTransferFrom(user, address(this), investmentAmount);
 
         if (fee > 0 && vault != address(0)) {
-            collateralToken.safeTransfer(vault, fee);
+            collateralToken.approve(vault, fee);
+            IUniversalVault(vault).receiveFees(fee);
             emit FeesCollected(fee);
         }
 
@@ -357,9 +365,10 @@ contract FPMM is ERC1155Holder, ReentrancyGuard, EIP712 {
         yesReserve = newYesReserve - mergeAmount;
         noReserve = newNoReserve;
 
-        // Send fee to vault
+        // Send fee to vault (via receiveFees to track earnings)
         if (fee > 0 && vault != address(0)) {
-            collateralToken.safeTransfer(vault, fee);
+            collateralToken.approve(vault, fee);
+            IUniversalVault(vault).receiveFees(fee);
             emit FeesCollected(fee);
         }
 
@@ -400,9 +409,10 @@ contract FPMM is ERC1155Holder, ReentrancyGuard, EIP712 {
         yesReserve = newYesReserve;
         noReserve = newNoReserve - mergeAmount;
 
-        // Send fee to vault
+        // Send fee to vault (via receiveFees to track earnings)
         if (fee > 0 && vault != address(0)) {
-            collateralToken.safeTransfer(vault, fee);
+            collateralToken.approve(vault, fee);
+            IUniversalVault(vault).receiveFees(fee);
             emit FeesCollected(fee);
         }
 

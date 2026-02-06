@@ -2,11 +2,10 @@
 
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
-import { parseUnits, formatUnits, parseAbiItem } from 'viem';
+import { parseUnits, formatUnits } from 'viem';
 import { useState, useMemo, useEffect } from 'react';
-import Image from 'next/image';
-import Link from 'next/link';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { Header } from '@/components/Header';
 import {
   CONTRACTS,
   ERC20_ABI,
@@ -98,66 +97,128 @@ export default function LiquidityPage() {
   const formattedTotalAssets = totalAssets ? formatUnits(totalAssets as bigint, 6) : '0';
   const formattedTotalFees = totalFeesReceived ? formatUnits(totalFeesReceived as bigint, 6) : '0';
 
-  // Calculate user's share of fees
-  const userEarnings = useMemo(() => {
-    if (!shareBalance || !totalSupply || !totalFeesReceived) return 0;
-    const shares = shareBalance as bigint;
-    const supply = totalSupply as bigint;
-    const fees = totalFeesReceived as bigint;
-    if (supply === 0n) return 0;
-    return Number(formatUnits((fees * shares) / supply, 6));
-  }, [shareBalance, totalSupply, totalFeesReceived]);
+  // Fetch user's deposit/withdraw history for chart
+  const [chartData, setChartData] = useState<{ time: string; value: number; type: string }[]>([]);
+  const [netDeposited, setNetDeposited] = useState(0);
 
-  // Fetch real deposit events for chart
-  const [chartData, setChartData] = useState<{ time: string; value: number }[]>([]);
+  // Calculate actual profit = current balance - net deposits
+  const userProfit = useMemo(() => {
+    const currentBalance = Number(formattedShareValue);
+    return currentBalance - netDeposited;
+  }, [formattedShareValue, netDeposited]);
 
   useEffect(() => {
-    async function fetchEvents() {
-      if (!publicClient) return;
+    async function fetchUserHistory() {
+      if (!address) {
+        setChartData([]);
+        return;
+      }
 
       try {
-        // Get deposit events from vault
-        const logs = await publicClient.getLogs({
-          address: CONTRACTS.universalVault as `0x${string}`,
-          event: parseAbiItem('event Deposit(address indexed sender, address indexed owner, uint256 assets, uint256 shares)'),
-          fromBlock: 'earliest',
+        // Use Coston2 explorer API (RPC has 30-block limit which misses older events)
+        const DEPOSIT_TOPIC = '0xdcbc1c05240f31ff3ad067ef1ee35ce4997762752e3a095284754544f4c709d7';
+        const WITHDRAW_TOPIC = '0xfbde797d201c681b91056529119e0b02407c7bb96a4a2c75c01fc9667232c8db';
+
+        const userAddressPadded = `0x000000000000000000000000${address.slice(2).toLowerCase()}`;
+
+        // Fetch all deposit events (filter client-side as explorer topic filtering unreliable)
+        const depositResponse = await fetch(
+          `https://coston2-explorer.flare.network/api?module=logs&action=getLogs&address=${CONTRACTS.universalVault}&topic0=${DEPOSIT_TOPIC}&fromBlock=0&toBlock=latest`
+        );
+        const depositData = await depositResponse.json();
+
+        // Fetch all withdraw events
+        const withdrawResponse = await fetch(
+          `https://coston2-explorer.flare.network/api?module=logs&action=getLogs&address=${CONTRACTS.universalVault}&topic0=${WITHDRAW_TOPIC}&fromBlock=0&toBlock=latest`
+        );
+        const withdrawData = await withdrawResponse.json();
+
+        // Parse and filter events for this user
+        interface LogEntry {
+          blockNumber: string;
+          transactionIndex: string;
+          data: string;
+          topics: string[];
+        }
+
+        const depositEvents = (depositData.result || [])
+          .filter((log: LogEntry) => {
+            // topic2 is owner for Deposit event
+            return log.topics[2]?.toLowerCase() === userAddressPadded;
+          })
+          .map((log: LogEntry) => ({
+            block: parseInt(log.blockNumber, 16),
+            txIndex: parseInt(log.transactionIndex, 16),
+            // data contains: assets (uint256) + shares (uint256) = 64 bytes each
+            assets: BigInt('0x' + log.data.slice(2, 66)),
+            type: 'deposit' as const,
+          }));
+
+        const withdrawEvents = (withdrawData.result || [])
+          .filter((log: LogEntry) => {
+            // topic3 is owner for Withdraw event
+            return log.topics[3]?.toLowerCase() === userAddressPadded;
+          })
+          .map((log: LogEntry) => ({
+            block: parseInt(log.blockNumber, 16),
+            txIndex: parseInt(log.transactionIndex, 16),
+            // data contains: assets (uint256) + shares (uint256)
+            assets: BigInt('0x' + log.data.slice(2, 66)),
+            type: 'withdraw' as const,
+          }));
+
+        const allEvents = [...depositEvents, ...withdrawEvents].sort((a, b) => {
+          if (a.block !== b.block) return a.block - b.block;
+          return a.txIndex - b.txIndex;
         });
 
-        // Build cumulative TVL over time
-        let cumulative = 0;
-        const data: { time: string; value: number; block: bigint }[] = [];
+        console.log('Found events from explorer:', allEvents.length, allEvents);
 
-        for (const log of logs) {
-          const assets = (log.args as { assets?: bigint }).assets || 0n;
-          cumulative += Number(formatUnits(assets, 6));
+        // Build cumulative balance history and track net deposited
+        let balance = 0;
+        let totalDeposited = 0;
+        let totalWithdrawn = 0;
+        const data: { time: string; value: number; type: string }[] = [
+          { time: 'Start', value: 0, type: 'start' }
+        ];
+
+        allEvents.forEach((event) => {
+          const amount = Number(formatUnits(event.assets, 6));
+          if (event.type === 'deposit') {
+            balance += amount;
+            totalDeposited += amount;
+          } else {
+            balance -= amount;
+            totalWithdrawn += amount;
+          }
           data.push({
-            time: '',
-            value: cumulative,
-            block: log.blockNumber,
+            time: event.type === 'deposit' ? `+$${amount.toFixed(2)}` : `-$${amount.toFixed(2)}`,
+            value: Math.max(0, balance),
+            type: event.type,
           });
+        });
+
+        // Track net deposited for profit calculation
+        setNetDeposited(totalDeposited - totalWithdrawn);
+
+        // Add current balance as final point if different (shows profit/loss)
+        const currentBalance = Number(formattedShareValue);
+        if (data.length === 1 || Math.abs(data[data.length - 1].value - currentBalance) > 0.01) {
+          data.push({ time: 'Now', value: currentBalance, type: 'current' });
         }
 
-        // Add current value as final point
-        const currentTvl = Number(formattedTotalAssets);
-        if (data.length === 0 || data[data.length - 1].value !== currentTvl) {
-          data.push({ time: 'Now', value: currentTvl, block: 0n });
-        }
-
-        // Format times (use block numbers as labels for simplicity)
-        const formatted = data.map((d, i) => ({
-          time: i === data.length - 1 ? 'Now' : `#${i + 1}`,
-          value: d.value,
-        }));
-
-        setChartData(formatted.length > 0 ? formatted : [{ time: 'Now', value: currentTvl }]);
+        setChartData(data);
       } catch (err) {
-        // Fallback to current value only
-        setChartData([{ time: 'Now', value: Number(formattedTotalAssets) }]);
+        console.error('Failed to fetch history:', err);
+        setChartData([
+          { time: 'Start', value: 0, type: 'start' },
+          { time: 'Now', value: Number(formattedShareValue), type: 'current' }
+        ]);
       }
     }
 
-    fetchEvents();
-  }, [publicClient, formattedTotalAssets]);
+    fetchUserHistory();
+  }, [address, formattedShareValue, depositSuccess, withdrawSuccess]);
 
   const marketLiquidity = yesReserve && noReserve
     ? Number(formatUnits((yesReserve as bigint) + (noReserve as bigint), 6))
@@ -223,33 +284,7 @@ export default function LiquidityPage() {
 
   return (
     <main className="min-h-screen">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-[#ffb80c] to-[#ff9500]">
-        <div className="max-w-6xl mx-auto px-4 py-2 flex justify-between items-center">
-          <div className="flex items-center gap-6">
-            <Link href="/">
-              <Image src="/betflare-logo.png" alt="BetFlare" width={140} height={32} className="h-8 w-auto" />
-            </Link>
-            <nav className="hidden md:flex items-center gap-4 text-sm font-medium">
-              <Link href="/" className="text-black/70 hover:text-black">Markets</Link>
-              <Link href="/liquidity" className="text-black/90 hover:text-black px-3 py-1 bg-black/10 rounded">Liquidity</Link>
-            </nav>
-          </div>
-          <ConnectButton.Custom>
-            {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
-              const connected = mounted && account && chain;
-              return (
-                <button
-                  onClick={connected ? openAccountModal : openConnectModal}
-                  className="px-4 py-2 bg-black text-white font-semibold rounded-lg hover:bg-black/80 transition text-sm"
-                >
-                  {connected ? account.displayName : 'Connect Wallet'}
-                </button>
-              );
-            }}
-          </ConnectButton.Custom>
-        </div>
-      </div>
+      <Header />
 
       {/* Main Content */}
       <div className="max-w-2xl mx-auto px-4 py-8">
@@ -261,16 +296,37 @@ export default function LiquidityPage() {
           </p>
         </div>
 
+        {/* Stats Row */}
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="card text-center">
+            <div className="text-sm text-[--text-muted]">Pool TVL</div>
+            <div className="text-xl font-bold">${Number(formattedTotalAssets).toFixed(2)}</div>
+          </div>
+          <div className="card text-center">
+            <div className="text-sm text-[--text-muted]">Total Fees</div>
+            <div className="text-xl font-bold text-[--accent-green]">${Number(formattedTotalFees).toFixed(4)}</div>
+          </div>
+          <div className="card text-center">
+            <div className="text-sm text-[--text-muted]">Fee Rate</div>
+            <div className="text-xl font-bold">0.2%</div>
+          </div>
+        </div>
+
         {/* Chart */}
         <div className="card mb-6">
           <div className="flex justify-between items-start mb-4">
             <div>
-              <div className="text-sm text-[--text-muted]">Total Pool Value</div>
-              <div className="text-3xl font-bold text-[--accent-green]">${Number(formattedTotalAssets).toFixed(2)}</div>
+              <div className="text-sm text-[--text-muted]">Your Balance</div>
+              <div className="text-3xl font-bold">${Number(formattedShareValue).toFixed(2)}</div>
             </div>
             <div className="text-right">
-              <div className="text-sm text-[--text-muted]">Total Fees Earned</div>
-              <div className="text-xl font-bold text-[--accent-green]">+${Number(formattedTotalFees).toFixed(4)}</div>
+              <div className="text-sm text-[--text-muted]">Your Profit</div>
+              <div className={`text-xl font-bold ${userProfit >= 0 ? 'text-[--accent-green]' : 'text-[--accent-red]'}`}>
+                {userProfit >= 0 ? '+' : ''}{userProfit.toFixed(4)}
+              </div>
+              <div className="text-xs text-[--text-muted]">
+                (deposited: ${netDeposited.toFixed(2)})
+              </div>
             </div>
           </div>
           <div className="h-32">
@@ -292,18 +348,6 @@ export default function LiquidityPage() {
                 <Area type="monotone" dataKey="value" stroke="#22c55e" strokeWidth={2} fill="url(#colorValue)" />
               </AreaChart>
             </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 gap-4 mb-6">
-          <div className="card text-center">
-            <div className="text-sm text-[--text-muted] mb-1">Your Share</div>
-            <div className="text-2xl font-bold">${Number(formattedShareValue).toFixed(2)}</div>
-          </div>
-          <div className="card text-center">
-            <div className="text-sm text-[--text-muted] mb-1">Your Earnings</div>
-            <div className="text-2xl font-bold text-[--accent-green]">+${userEarnings.toFixed(4)}</div>
           </div>
         </div>
 
@@ -398,20 +442,6 @@ export default function LiquidityPage() {
           Earn 0.2% fee on every trade. Liquidity is split equally across all active markets.
         </div>
       </div>
-
-      {/* Footer */}
-      <footer className="border-t border-[--border-color] bg-white mt-12">
-        <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="text-sm text-[--text-secondary]">
-              Powered by Flare FTSO Oracle
-            </div>
-            <a href="https://faucet.flare.network/coston2" target="_blank" rel="noopener noreferrer" className="text-sm text-[--text-secondary] hover:text-[--accent-blue]">
-              Get Testnet Tokens
-            </a>
-          </div>
-        </div>
-      </footer>
     </main>
   );
 }
