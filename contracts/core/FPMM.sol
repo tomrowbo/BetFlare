@@ -31,6 +31,7 @@ contract FPMM is ERC1155Holder, ReentrancyGuard, EIP712 {
 
     uint256 public totalFees;
     address public vault;
+    address public router;
 
     uint256 public yesPositionId;
     uint256 public noPositionId;
@@ -66,6 +67,14 @@ contract FPMM is ERC1155Holder, ReentrancyGuard, EIP712 {
     }
 
     /**
+     * @notice Set the liquidity router address
+     */
+    function setRouter(address _router) external {
+        require(router == address(0), "Router already set");
+        router = _router;
+    }
+
+    /**
      * @notice Add initial liquidity to the market
      * @param amount Amount of collateral to add
      */
@@ -85,6 +94,31 @@ contract FPMM is ERC1155Holder, ReentrancyGuard, EIP712 {
         noReserve += amount;
 
         emit LiquidityAdded(msg.sender, amount, amount, amount);
+    }
+
+    /**
+     * @notice Remove liquidity from the market (router only)
+     * @param amount Amount of liquidity to remove (in collateral terms)
+     * @return collateralOut Amount of collateral returned
+     */
+    function removeLiquidity(uint256 amount) external nonReentrant returns (uint256 collateralOut) {
+        require(msg.sender == router, "Only router");
+        require(!resolved, "Market resolved");
+        require(amount > 0, "Amount must be positive");
+        require(yesReserve >= amount && noReserve >= amount, "Insufficient liquidity");
+
+        // Remove from reserves
+        yesReserve -= amount;
+        noReserve -= amount;
+
+        // Merge YES + NO tokens back to collateral
+        conditionalTokens.mergePositions(conditionId, amount);
+
+        // Transfer collateral to router
+        collateralOut = amount;
+        collateralToken.safeTransfer(router, collateralOut);
+
+        emit LiquidityRemoved(msg.sender, amount, amount, collateralOut);
     }
 
     /**

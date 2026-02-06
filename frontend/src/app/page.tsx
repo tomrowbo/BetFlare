@@ -1,14 +1,73 @@
 'use client';
 
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount } from 'wagmi';
+import { useAccount, useReadContract } from 'wagmi';
+import { formatUnits } from 'viem';
 import { MarketCard } from '@/components/MarketCard';
 import { BetSlip } from '@/components/BetSlip';
 import { PositionView } from '@/components/PositionView';
-import { VaultPanel } from '@/components/VaultPanel';
 import { useState } from 'react';
-
+import Link from 'next/link';
 import Image from 'next/image';
+import { CONTRACTS, UNIVERSAL_VAULT_ABI, FPMM_ABI } from '@/config/contracts';
+
+function LiquidityWidget() {
+  const { data: totalAssets } = useReadContract({
+    address: CONTRACTS.universalVault as `0x${string}`,
+    abi: UNIVERSAL_VAULT_ABI,
+    functionName: 'totalAssets',
+  });
+
+  const { data: yesReserve } = useReadContract({
+    address: CONTRACTS.fpmm as `0x${string}`,
+    abi: FPMM_ABI,
+    functionName: 'yesReserve',
+  });
+
+  const { data: noReserve } = useReadContract({
+    address: CONTRACTS.fpmm as `0x${string}`,
+    abi: FPMM_ABI,
+    functionName: 'noReserve',
+  });
+
+  const formattedTVL = totalAssets ? formatUnits(totalAssets as bigint, 6) : '0';
+  const marketLiquidity = yesReserve && noReserve
+    ? Number(formatUnits((yesReserve as bigint) + (noReserve as bigint), 6))
+    : 0;
+
+  return (
+    <div className="mt-8">
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-xl font-bold">Liquidity Pool</h3>
+            <p className="text-sm text-[--text-secondary]">Earn fees by providing liquidity to all markets</p>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="text-center">
+              <div className="text-sm text-[--text-muted]">Market Liquidity</div>
+              <div className="text-xl font-bold text-[--accent-green]">${marketLiquidity.toFixed(2)}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-sm text-[--text-muted]">Vault TVL</div>
+              <div className="text-xl font-bold">${Number(formattedTVL).toFixed(2)}</div>
+            </div>
+            <div className="text-center">
+              <div className="text-sm text-[--text-muted]">Est. APY</div>
+              <div className="text-xl font-bold text-[--accent-green]">~5.2%</div>
+            </div>
+            <Link
+              href="/liquidity"
+              className="btn btn-yes active px-6"
+            >
+              Provide Liquidity
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function Home() {
   const { isConnected } = useAccount();
@@ -22,9 +81,9 @@ export default function Home() {
           <div className="flex items-center gap-6">
             <Image src="/betflare-logo.png" alt="BetFlare" width={140} height={32} className="h-8 w-auto" />
             <nav className="hidden md:flex items-center gap-4 text-sm font-medium">
-              <a href="#" className="text-black/90 hover:text-black px-3 py-1 bg-black/10 rounded">Markets</a>
+              <Link href="/" className="text-black/90 hover:text-black px-3 py-1 bg-black/10 rounded">Markets</Link>
+              <Link href="/liquidity" className="text-black/70 hover:text-black">Liquidity</Link>
               <a href="#" className="text-black/70 hover:text-black">Portfolio</a>
-              <a href="#" className="text-black/70 hover:text-black">Leaderboard</a>
             </nav>
           </div>
           <ConnectButton.Custom>
@@ -84,10 +143,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* LP Vault Section */}
-        <div className="mt-8">
-          <VaultPanel disabled={!isConnected} />
-        </div>
+        {/* LP Vault Quick Link */}
+        <LiquidityWidget />
       </div>
 
       {/* Footer */}
