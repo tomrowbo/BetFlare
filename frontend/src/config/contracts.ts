@@ -2,10 +2,13 @@
 export const CONTRACTS = {
   usdt: '0xC1A5B41512496B80903D1f32d6dEa3a73212E71F',
   conditionalTokens: '0xCe9070d4C6940e7528b418cFB36087345f947c49',
-  vault: '0xd542B1ab9DD7065CC66ded19CE3dA42d41d8B15C',
   resolver: '0xd8B47D970077D6752111dd176Dd0cce558e91445',
   factory: '0xaa59AB7d8A844BEd4717f93da255e6124718A219',
   fpmm: '0x5D8FC54d9D4e3D24331b0378CC3e6F11487255F6',
+  // Universal Vault System
+  universalVault: '0x36e57B920Ef5eA206211e72Af2603Fb42D94b2F3',
+  vault: '0x36e57B920Ef5eA206211e72Af2603Fb42D94b2F3', // alias for universalVault
+  liquidityRouter: '0x530dC80e699B7f11D38E11879c00cD7dc2152364',
 } as const;
 
 // FTSO Registry on Coston2
@@ -51,4 +54,25 @@ export const CONDITIONAL_TOKENS_ABI = [
   { name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }, { name: 'id', type: 'uint256' }], outputs: [{ name: '', type: 'uint256' }] },
   { name: 'redeemPositions', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'conditionId', type: 'bytes32' }], outputs: [] },
   { name: 'isResolved', type: 'function', stateMutability: 'view', inputs: [{ name: 'conditionId', type: 'bytes32' }], outputs: [{ name: '', type: 'bool' }] },
+] as const;
+
+export const UNIVERSAL_VAULT_ABI = [
+  { name: 'deposit', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'assets', type: 'uint256' }, { name: 'receiver', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'withdraw', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'assets', type: 'uint256' }, { name: 'receiver', type: 'address' }, { name: 'owner', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'totalAssets', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'balanceOf', type: 'function', stateMutability: 'view', inputs: [{ name: 'account', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'convertToAssets', type: 'function', stateMutability: 'view', inputs: [{ name: 'shares', type: 'uint256' }], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'pendingDeposits', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'totalFeesReceived', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'deployToMarkets', type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+  { name: 'isXRPEnabled', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'bool' }] },
+  { name: 'getXRPQuote', type: 'function', stateMutability: 'view', inputs: [{ name: 'xrpAmount', type: 'uint256' }], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'depositXRP', type: 'function', stateMutability: 'nonpayable', inputs: [{ name: 'xrpAmount', type: 'uint256' }, { name: 'minUsdtOut', type: 'uint256' }, { name: 'receiver', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
+] as const;
+
+export const LIQUIDITY_ROUTER_ABI = [
+  { name: 'getActiveMarketsCount', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'getActiveMarkets', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'address[]' }] },
+  { name: 'getTotalDeployed', type: 'function', stateMutability: 'view', inputs: [], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'getMarketAllocation', type: 'function', stateMutability: 'view', inputs: [{ name: 'fpmm', type: 'address' }], outputs: [{ name: 'deployedAmount', type: 'uint256' }, { name: 'active', type: 'bool' }, { name: 'currentLiquidity', type: 'uint256' }] },
 ] as const;
