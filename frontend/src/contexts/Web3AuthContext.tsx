@@ -46,6 +46,13 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const init = async () => {
       try {
+        console.log('[Web3Auth] ====== INITIALIZATION START ======');
+        console.log('[Web3Auth] Client ID:', WEB3AUTH_CONFIG.clientId);
+        console.log('[Web3Auth] Client ID length:', WEB3AUTH_CONFIG.clientId?.length);
+        console.log('[Web3Auth] Client ID from env:', process.env.NEXT_PUBLIC_WEB3AUTH_CLIENT_ID);
+        console.log('[Web3Auth] Network:', 'SAPPHIRE_DEVNET');
+        console.log('[Web3Auth] Chain Config:', JSON.stringify(WEB3AUTH_CONFIG.chainConfig, null, 2));
+
         const chainConfig = {
           chainNamespace: CHAIN_NAMESPACES.EIP155,
           chainId: WEB3AUTH_CONFIG.chainConfig.chainId,
@@ -56,18 +63,31 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
           tickerName: WEB3AUTH_CONFIG.chainConfig.tickerName,
         };
 
+        console.log('[Web3Auth] Creating privateKeyProvider with chainConfig:', chainConfig);
+
         const privateKeyProvider = new EthereumPrivateKeyProvider({
           config: { chainConfig },
         });
 
+        console.log('[Web3Auth] PrivateKeyProvider created');
+
         // Web3Auth Modal v10 - pass privateKeyProvider
-        const web3authInstance = new Web3Auth({
+        const web3authOptions = {
           clientId: WEB3AUTH_CONFIG.clientId,
           web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
           privateKeyProvider: privateKeyProvider as any,
+        };
+        console.log('[Web3Auth] Creating Web3Auth instance with options:', {
+          clientId: web3authOptions.clientId,
+          web3AuthNetwork: web3authOptions.web3AuthNetwork,
+          hasPrivateKeyProvider: !!web3authOptions.privateKeyProvider,
         });
 
+        const web3authInstance = new Web3Auth(web3authOptions);
+
+        console.log('[Web3Auth] Web3Auth instance created, calling init()...');
         await web3authInstance.init();
+        console.log('[Web3Auth] init() completed successfully');
 
         setWeb3auth(web3authInstance);
         setIsInitialized(true);
@@ -92,8 +112,14 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
             console.warn('[Web3Auth] Could not restore session:', err);
           }
         }
-      } catch (error) {
-        console.error('[Web3Auth] Failed to initialize:', error);
+      } catch (error: any) {
+        console.error('[Web3Auth] ====== INITIALIZATION FAILED ======');
+        console.error('[Web3Auth] Error:', error);
+        console.error('[Web3Auth] Error message:', error?.message);
+        console.error('[Web3Auth] Error stack:', error?.stack);
+        if (error?.response) {
+          console.error('[Web3Auth] Error response:', error.response);
+        }
         setIsInitialized(true);
       }
     };
@@ -102,7 +128,13 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
   }, [initializeWithPrivateKey]);
 
   const connect = useCallback(async () => {
+    console.log('[Web3Auth] ====== CONNECT START ======');
+    console.log('[Web3Auth] web3auth instance:', !!web3auth);
+    console.log('[Web3Auth] web3auth.connected:', web3auth?.connected);
+    console.log('[Web3Auth] web3auth.status:', (web3auth as any)?.status);
+
     if (!web3auth) {
+      console.error('[Web3Auth] Cannot connect - Web3Auth not initialized');
       throw new Error('Web3Auth not initialized');
     }
 
@@ -112,6 +144,7 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
 
       // Use the modal's connect method which handles everything
       const web3authProvider = await web3auth.connect();
+      console.log('[Web3Auth] Modal returned, provider:', !!web3authProvider);
 
       if (!web3authProvider) {
         throw new Error('No provider returned from Web3Auth');
@@ -132,8 +165,12 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
       await initializeWithPrivateKey(privateKey);
 
       console.log('[Web3Auth] Etherspot initialized');
-    } catch (error) {
-      console.error('[Web3Auth] Connection failed:', error);
+    } catch (error: any) {
+      console.error('[Web3Auth] ====== CONNECTION FAILED ======');
+      console.error('[Web3Auth] Error:', error);
+      console.error('[Web3Auth] Error message:', error?.message);
+      console.error('[Web3Auth] Error code:', error?.code);
+      console.error('[Web3Auth] Error stack:', error?.stack);
       throw error;
     } finally {
       setIsConnecting(false);
