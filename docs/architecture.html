@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BetFlare Architecture</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #141414;
+            --bg-card: #1a1a1a;
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0a0;
+            --accent-orange: #ffb80c;
+            --accent-green: #22c55e;
+            --accent-blue: #3b82f6;
+            --border-color: #2a2a2a;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--accent-orange), #ff9500);
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: black;
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: rgba(0,0,0,0.7);
+            font-size: 1.1rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .nav {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+            position: sticky;
+            top: 1rem;
+            z-index: 100;
+        }
+
+        .nav ul {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            list-style: none;
+            justify-content: center;
+        }
+
+        .nav a {
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+
+        .nav a:hover {
+            background: var(--bg-card);
+            color: var(--accent-orange);
+        }
+
+        .section {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .section h2 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+            color: var(--accent-orange);
+        }
+
+        .section h2 span {
+            color: var(--text-secondary);
+            font-weight: 400;
+            font-size: 1rem;
+        }
+
+        .section > p {
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+        }
+
+        .mermaid {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 2rem;
+            margin: 1.5rem 0;
+            overflow-x: auto;
+        }
+
+        .info-box {
+            background: var(--bg-secondary);
+            border-left: 4px solid var(--accent-blue);
+            padding: 1rem 1.5rem;
+            margin: 1.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+
+        .info-box h4 {
+            color: var(--accent-blue);
+            margin-bottom: 0.5rem;
+        }
+
+        .info-box ul {
+            color: var(--text-secondary);
+            padding-left: 1.5rem;
+        }
+
+        .info-box li {
+            margin: 0.25rem 0;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        th {
+            background: var(--bg-secondary);
+            color: var(--accent-orange);
+            font-weight: 600;
+        }
+
+        td {
+            color: var(--text-secondary);
+        }
+
+        code {
+            background: var(--bg-secondary);
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 0.85rem;
+            color: var(--accent-green);
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .badge-green {
+            background: rgba(34, 197, 94, 0.2);
+            color: var(--accent-green);
+        }
+
+        .badge-blue {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--accent-blue);
+        }
+
+        .badge-orange {
+            background: rgba(255, 184, 12, 0.2);
+            color: var(--accent-orange);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            .section {
+                padding: 1.5rem;
+            }
+            .mermaid {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>BetFlare Architecture</h1>
+        <p>Prediction Market Platform on Flare Network</p>
+    </div>
+
+    <div class="container">
+        <nav class="nav">
+            <ul>
+                <li><a href="#overview">System Overview</a></li>
+                <li><a href="#contracts">Smart Contracts</a></li>
+                <li><a href="#trading">Trading Flow</a></li>
+                <li><a href="#liquidity">LP Flow</a></li>
+                <li><a href="#resolution">Resolution</a></li>
+                <li><a href="#frontend">Frontend</a></li>
+                <li><a href="#dataflow">Data Flow</a></li>
+                <li><a href="#deployment">Deployment</a></li>
+            </ul>
+        </nav>
+
+        <!-- 1. High-Level System Overview -->
+        <section id="overview" class="section">
+            <h2>1. High-Level System Overview <span>- Actors & Boundaries</span></h2>
+            <p>Simple view showing the main actors and system components.</p>
+
+            <div class="mermaid">
+flowchart TB
+    subgraph Users["Users"]
+        Trader["Trader"]
+        LP["Liquidity Provider"]
+        Keeper["Keeper/Resolver"]
+    end
+
+    subgraph Frontend["Frontend (Next.js)"]
+        UI["Web App<br/>app.betflare.xyz"]
+    end
+
+    subgraph Blockchain["Flare Network (Coston2)"]
+        subgraph Core["Core Contracts"]
+            Vault["Universal Vault"]
+            Router["Liquidity Router"]
+            FPMM["Market AMM"]
+            CT["Conditional Tokens"]
+        end
+        subgraph Oracle["Oracle Layer"]
+            FTSO["Flare FTSO"]
+            Resolver["FTSO Resolver"]
+        end
+    end
+
+    Trader --> UI
+    LP --> UI
+    Keeper --> UI
+    UI <--> Core
+    Resolver --> FTSO
+    Resolver --> CT
+    FPMM --> CT
+    Vault --> Router
+    Router --> FPMM
+            </div>
+
+            <div class="info-box">
+                <h4>Key Actors</h4>
+                <ul>
+                    <li><strong>Traders</strong> - Place YES/NO bets on market outcomes</li>
+                    <li><strong>Liquidity Providers</strong> - Deposit USDT to earn 0.2% trading fees</li>
+                    <li><strong>Keepers</strong> - Trigger market resolution after deadline passes</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- 2. Smart Contract Architecture -->
+        <section id="contracts" class="section">
+            <h2>2. Smart Contract Architecture <span>- Layers & Functions</span></h2>
+            <p>Detailed contract relationships showing the layered architecture.</p>
+
+            <div class="mermaid">
+flowchart TB
+    subgraph Tokens["Token Layer"]
+        USDT["USDT ERC20<br/>───────<br/>Collateral Token"]
+        CT["ConditionalTokens ERC1155<br/>───────<br/>YES/NO Positions"]
+    end
+
+    subgraph AMM["Trading Layer"]
+        FPMM["FPMM<br/>───────<br/>Constant Product AMM<br/>buyYes / buyNo<br/>sellYes / sellNo<br/>0.2% fee"]
+    end
+
+    subgraph Liquidity["Liquidity Layer"]
+        Vault["UniversalVault ERC4626<br/>───────<br/>deposit / withdraw<br/>receiveFees<br/>bfLP shares"]
+        Router["LiquidityRouter UUPS<br/>───────<br/>deployLiquidity<br/>withdrawFromMarkets<br/>rebalance"]
+    end
+
+    subgraph Resolution["Resolution Layer"]
+        Resolver["FTSOResolver<br/>───────<br/>resolve<br/>getMarket<br/>getCurrentPrice"]
+        FTSO["Flare FTSO Registry<br/>───────<br/>Decentralized Oracle"]
+    end
+
+    USDT -->|"collateral"| Vault
+    Vault -->|"deploy"| Router
+    Router -->|"addLiquidity"| FPMM
+    FPMM -->|"split/merge"| CT
+    FPMM -->|"fees"| Vault
+    Resolver -->|"reportPayouts"| CT
+    Resolver -->|"getPrice"| FTSO
+    Resolver -->|"markResolved"| FPMM
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Contract</th>
+                        <th>Purpose</th>
+                        <th>Pattern</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><code>ConditionalTokens</code></td>
+                        <td>ERC1155 tokens representing YES/NO outcomes</td>
+                        <td><span class="badge badge-blue">Immutable</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>FPMM</code></td>
+                        <td>Automated Market Maker using constant product formula</td>
+                        <td><span class="badge badge-blue">Immutable</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>UniversalVault</code></td>
+                        <td>ERC4626 vault for LP deposits, accumulates fees</td>
+                        <td><span class="badge badge-orange">UUPS Proxy</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>LiquidityRouter</code></td>
+                        <td>Distributes liquidity equally across all markets</td>
+                        <td><span class="badge badge-orange">UUPS Proxy</span></td>
+                    </tr>
+                    <tr>
+                        <td><code>FTSOResolver</code></td>
+                        <td>Resolves markets using Flare FTSO oracle prices</td>
+                        <td><span class="badge badge-blue">Immutable</span></td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- 3. Trading Flow -->
+        <section id="trading" class="section">
+            <h2>3. Trading Flow <span>- User Journey</span></h2>
+            <p>Step-by-step sequence showing how a user places a bet.</p>
+
+            <div class="mermaid">
+sequenceDiagram
+    participant U as User
+    participant UI as Frontend
+    participant W as Wallet
+    participant USDT as USDT Token
+    participant F as FPMM
+    participant CT as ConditionalTokens
+    participant V as Vault
+
+    U->>UI: Enter bet amount
+    UI->>USDT: Check allowance
+
+    alt Needs Approval
+        UI->>W: Request approval tx
+        W->>USDT: approve(FPMM, amount)
+        USDT-->>UI: Approved
+    end
+
+    UI->>W: Request buy tx
+    W->>F: buyYes(amount)
+
+    Note over F: Calculate shares<br/>(constant product)
+    Note over F: Deduct 0.2% fee
+
+    F->>USDT: transferFrom(user, FPMM)
+    F->>CT: splitPosition - mint YES tokens
+    F->>V: receiveFees(fee)
+    F-->>UI: Return shares received
+
+    UI->>UI: Invalidate queries
+    UI-->>U: Show success + tx link
+            </div>
+
+            <div class="info-box">
+                <h4>Trading Mechanics</h4>
+                <ul>
+                    <li>Uses constant product formula: <code>yesReserve × noReserve = k</code></li>
+                    <li>0.2% fee on all trades, sent to vault for LPs</li>
+                    <li>Single-click approve + buy for better UX</li>
+                    <li>Prices shown as probabilities (0-100%)</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- 4. Liquidity Provider Flow -->
+        <section id="liquidity" class="section">
+            <h2>4. Liquidity Provider Flow <span>- Deposit & Withdraw</span></h2>
+            <p>How LPs deposit and withdraw from the unified vault.</p>
+
+            <div class="mermaid">
+sequenceDiagram
+    participant LP as LP User
+    participant UI as Frontend
+    participant USDT as USDT
+    participant V as Vault
+    participant R as Router
+    participant M1 as FPMM Market 1
+    participant M2 as FPMM Market 2
+
+    LP->>UI: Deposit 100 USDT
+    UI->>USDT: approve(Vault)
+    UI->>V: deposit(100, LP)
+
+    V->>USDT: transferFrom(LP, Vault)
+    V->>R: deployLiquidity(100)
+
+    Note over R: 2 active markets<br/>50 USDT each
+
+    R->>M1: addLiquidity(50)
+    R->>M2: addLiquidity(50)
+
+    Note over M1,M2: Split into YES+NO<br/>at current ratio
+
+    V-->>LP: Mint bfLP shares
+
+    rect rgb(40, 50, 60)
+        Note over LP,M2: Later: Withdraw
+        LP->>UI: Withdraw 50 USDT
+        UI->>V: withdraw(50, LP, LP)
+        V->>R: withdrawFromMarkets(50)
+        R->>M1: removeLiquidity(25)
+        R->>M2: removeLiquidity(25)
+        V->>USDT: transfer(LP, 50)
+    end
+            </div>
+
+            <div class="info-box">
+                <h4>LP Economics</h4>
+                <ul>
+                    <li>Deposits distributed <strong>equally</strong> across all active markets</li>
+                    <li>LPs earn <strong>0.2% fee</strong> on every trade across all markets</li>
+                    <li>Vault shares (bfLP) appreciate as fees accumulate</li>
+                    <li>Withdrawals pull proportionally from all markets</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- 5. Market Resolution Flow -->
+        <section id="resolution" class="section">
+            <h2>5. Market Resolution Flow <span>- Oracle to Redemption</span></h2>
+            <p>From resolution trigger to winner redemption using Flare FTSO.</p>
+
+            <div class="mermaid">
+sequenceDiagram
+    participant K as Keeper
+    participant R as Resolver
+    participant FTSO as Flare FTSO
+    participant CT as ConditionalTokens
+    participant F as FPMM
+    participant U as Winner
+
+    Note over K,F: Resolution time passed
+
+    K->>R: resolve(marketId)
+    R->>FTSO: getCurrentPriceWithDecimals("testXRP")
+    FTSO-->>R: price=285000 ($2.85)
+
+    Note over R: Target: $2.50<br/>isAbove: true<br/>Result: YES wins
+
+    R->>CT: reportPayouts([1, 0])
+    R->>F: markResolved()
+
+    Note over F: Trading disabled
+
+    rect rgb(30, 60, 40)
+        Note over U,CT: Winner redeems
+        U->>CT: redeemPositions(conditionId)
+        CT->>CT: Burn YES tokens
+        CT->>U: Transfer USDT payout
+    end
+            </div>
+
+            <div class="info-box">
+                <h4>Resolution Process</h4>
+                <ul>
+                    <li>Anyone can call <code>resolve()</code> after resolution time</li>
+                    <li>FTSO oracle provides tamper-proof XRP price (5 decimals)</li>
+                    <li>Price compared against target to determine winner</li>
+                    <li>Winners manually redeem (industry standard: Polymarket, Augur)</li>
+                </ul>
+            </div>
+        </section>
+
+        <!-- 6. Frontend Component Hierarchy -->
+        <section id="frontend" class="section">
+            <h2>6. Frontend Component Hierarchy <span>- React Architecture</span></h2>
+            <p>React component structure and relationships.</p>
+
+            <div class="mermaid">
+flowchart TB
+    subgraph Layout["layout.tsx"]
+        Providers["Providers<br/>wagmi + RainbowKit + React Query"]
+    end
+
+    subgraph Pages["Pages"]
+        Home["/ Home<br/>Market list, TVL, categories"]
+        Market["/markets/[slug]<br/>Trading interface"]
+        Portfolio["/portfolio<br/>User positions"]
+        Liquidity["/liquidity<br/>LP deposit/withdraw"]
+    end
+
+    subgraph Components["Shared Components"]
+        Header["Header<br/>Nav + Balance + Wallet"]
+        MC["MarketCard<br/>Prices + Chart + Actions"]
+        BS["BetSlip<br/>Trade execution"]
+        PV["PositionView<br/>Holdings + Redeem"]
+        PC["PriceChart<br/>SVG price history"]
+        SK["Skeleton<br/>Loading states"]
+    end
+
+    subgraph Hooks["Data Hooks"]
+        RC["useReadContract<br/>Chain state"]
+        WC["useWriteContract<br/>Transactions"]
+        QC["useQueryClient<br/>Cache invalidation"]
+    end
+
+    Providers --> Pages
+    Home --> Header
+    Home --> MC
+    Market --> Header
+    Market --> MC
+    Market --> BS
+    Market --> PV
+    Portfolio --> Header
+    Portfolio --> PV
+    Liquidity --> Header
+
+    MC --> PC
+    Components --> Hooks
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Technology</th>
+                        <th>Purpose</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Next.js 16</td>
+                        <td>React framework with App Router</td>
+                    </tr>
+                    <tr>
+                        <td>wagmi v2</td>
+                        <td>React hooks for Ethereum/Flare</td>
+                    </tr>
+                    <tr>
+                        <td>RainbowKit</td>
+                        <td>Wallet connection UI</td>
+                    </tr>
+                    <tr>
+                        <td>React Query</td>
+                        <td>Async state management & caching</td>
+                    </tr>
+                    <tr>
+                        <td>Tailwind CSS</td>
+                        <td>Utility-first styling</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- 7. Data Flow Architecture -->
+        <section id="dataflow" class="section">
+            <h2>7. Data Flow Architecture <span>- Blockchain to UI</span></h2>
+            <p>How data moves from smart contracts to the user interface.</p>
+
+            <div class="mermaid">
+flowchart LR
+    subgraph Blockchain["Blockchain State"]
+        CS["Contract State<br/>Prices, Balances, Reserves"]
+        EV["Events<br/>Buy, Sell, Deposit"]
+    end
+
+    subgraph Fetching["Data Fetching"]
+        RPC["Coston2 RPC<br/>Real-time reads"]
+        API["Explorer API<br/>Historical events"]
+    end
+
+    subgraph Cache["React Query Cache"]
+        WC["Wagmi Cache<br/>Contract reads"]
+        LC["Local State<br/>UI state"]
+    end
+
+    subgraph UI["UI Components"]
+        Prices["Price Display"]
+        Charts["Price Charts"]
+        Balances["User Balances"]
+        History["Transaction History"]
+    end
+
+    CS -->|"useReadContract"| RPC
+    EV -->|"fetch logs"| API
+    RPC --> WC
+    API --> LC
+    WC --> Prices
+    WC --> Balances
+    LC --> Charts
+    LC --> History
+            </div>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Source</th>
+                        <th>Used For</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>RPC (wagmi)</td>
+                        <td>Real-time prices, balances, resolved status, position IDs</td>
+                    </tr>
+                    <tr>
+                        <td>Explorer API</td>
+                        <td>Historical events for charts, redeemed history, deposit history</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- 8. Contract Deployment Architecture -->
+        <section id="deployment" class="section">
+            <h2>8. Contract Deployment Architecture <span>- Proxy Patterns</span></h2>
+            <p>Upgradeability patterns and contract relationships.</p>
+
+            <div class="mermaid">
+flowchart TB
+    subgraph Upgradeable["UUPS Proxies (Upgradeable)"]
+        VP["Vault Proxy"] --> VI["Vault Implementation"]
+        RP["Router Proxy"] --> RI["Router Implementation"]
+    end
+
+    subgraph Immutable["Non-Upgradeable"]
+        CT["ConditionalTokens"]
+        FPMM1["FPMM Market 1"]
+        FPMM2["FPMM Market 2"]
+        FR["FTSOResolver"]
+    end
+
+    subgraph External["External Dependencies"]
+        USDT["USDT Token"]
+        FTSO["Flare FTSO Registry"]
+    end
+
+    VP --> RP
+    RP --> FPMM1
+    RP --> FPMM2
+    FPMM1 --> CT
+    FPMM2 --> CT
+    FR --> FTSO
+    FR --> CT
+            </div>
+
+            <h3 style="margin-top: 2rem; margin-bottom: 1rem;">Contract Addresses (Coston2 Testnet)</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Contract</th>
+                        <th>Address</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>USDT</td>
+                        <td><code>0xC1A5B41512496B80903D1f32d6dEa3a73212E71F</code></td>
+                    </tr>
+                    <tr>
+                        <td>ConditionalTokens</td>
+                        <td><code>0xCe9070d4C6940e7528b418cFB36087345f947c49</code></td>
+                    </tr>
+                    <tr>
+                        <td>UniversalVault</td>
+                        <td><code>0xB2569b2fbeA31A4f8ECaCF6Dd1fDC53157107F87</code></td>
+                    </tr>
+                    <tr>
+                        <td>LiquidityRouter</td>
+                        <td><code>0xD6473a91aC0C62e6F2BC1FF60e02C59B0237b4ac</code></td>
+                    </tr>
+                    <tr>
+                        <td>FTSO Registry</td>
+                        <td><code>0x48Da21ce34966A64E267CeFb78012C0282D0Ac87</code></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="info-box" style="margin-top: 2rem;">
+                <h4>Key Design Decisions</h4>
+                <ul>
+                    <li><strong>Constant Product AMM</strong> - Simple, proven pricing mechanism</li>
+                    <li><strong>ERC1155 Conditional Tokens</strong> - Gas-efficient position management</li>
+                    <li><strong>Unified Liquidity Pool</strong> - Single vault distributes across all markets</li>
+                    <li><strong>FTSO Oracle</strong> - Flare's decentralized price feeds for trustless resolution</li>
+                    <li><strong>Manual Redemption</strong> - Industry standard (Polymarket, Augur, Gnosis)</li>
+                    <li><strong>UUPS Proxies</strong> - Upgradeability for vault and router only</li>
+                </ul>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'dark',
+            themeVariables: {
+                primaryColor: '#ffb80c',
+                primaryTextColor: '#fff',
+                primaryBorderColor: '#ffb80c',
+                lineColor: '#666',
+                secondaryColor: '#1a1a1a',
+                tertiaryColor: '#141414',
+                background: '#0a0a0a',
+                mainBkg: '#1a1a1a',
+                secondBkg: '#141414',
+                nodeBorder: '#333',
+                clusterBkg: '#1a1a1a',
+                clusterBorder: '#333',
+                titleColor: '#fff',
+                edgeLabelBackground: '#1a1a1a',
+                actorBkg: '#1a1a1a',
+                actorBorder: '#ffb80c',
+                actorTextColor: '#fff',
+                actorLineColor: '#666',
+                signalColor: '#fff',
+                signalTextColor: '#fff',
+                labelBoxBkgColor: '#1a1a1a',
+                labelBoxBorderColor: '#333',
+                labelTextColor: '#fff',
+                loopTextColor: '#fff',
+                noteBkgColor: '#2a2a2a',
+                noteTextColor: '#fff',
+                noteBorderColor: '#444',
+                activationBkgColor: '#333',
+                activationBorderColor: '#ffb80c',
+                sequenceNumberColor: '#fff'
+            },
+            flowchart: {
+                curve: 'basis',
+                padding: 20
+            },
+            sequence: {
+                diagramMarginX: 50,
+                diagramMarginY: 10,
+                actorMargin: 50,
+                width: 150,
+                height: 65,
+                boxMargin: 10,
+                boxTextMargin: 5,
+                noteMargin: 10,
+                messageMargin: 35,
+                mirrorActors: false,
+                useMaxWidth: true
+            }
+        });
+    </script>
+</body>
+</html>

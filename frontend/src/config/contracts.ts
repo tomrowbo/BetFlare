@@ -30,6 +30,21 @@ export interface Market {
 
 export const MARKETS: Market[] = [
   {
+    slug: 'xrp-above-150-30min',
+    title: 'Will XRP be above $1.50 in 30 minutes?',
+    description: 'Market resolves YES if testXRP price is above $1.50 at resolution time.',
+    icon: '⏱️',
+    category: 'Price',
+    fpmm: '0x97D8Bf27dC27C821EaB066f098A611BD7f8cBe89',
+    resolver: '0x34d086c64AEA96a40c0a61fBEF5b3DC28e01a731',
+    marketId: '0x204f8b1497863e93a74bf1431047e316905340724da4744975ba1b37b6f82bcd',
+    conditionId: '0x204f8b1497863e93a74bf1431047e316905340724da4744975ba1b37b6f82bcd',
+    resolutionTime: 1770477840,
+    symbol: 'testXRP',
+    targetPrice: 150000,
+    isAbove: true,
+  },
+  {
     slug: 'xrp-above-250-test',
     title: 'Will XRP be above $2.50?',
     description: 'Resolves YES if testXRP price is above $2.50 at resolution time according to Flare FTSO.',
