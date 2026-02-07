@@ -8,7 +8,7 @@ import {
   useEffect,
   ReactNode,
 } from 'react';
-import { Web3Auth, type Web3AuthOptions } from '@web3auth/modal';
+import { Web3Auth } from '@web3auth/modal';
 import { CHAIN_NAMESPACES, IProvider, WEB3AUTH_NETWORK } from '@web3auth/base';
 import { EthereumPrivateKeyProvider } from '@web3auth/ethereum-provider';
 import { WEB3AUTH_CONFIG } from '@/config/etherspot';
@@ -16,14 +16,11 @@ import { useEtherspot } from './EtherspotContext';
 import { SocialUserInfo } from './WalletContext';
 
 interface Web3AuthContextValue {
-  // State
   isConnected: boolean;
   isConnecting: boolean;
   isInitialized: boolean;
   userInfo: SocialUserInfo | null;
   provider: IProvider | null;
-
-  // Methods
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
 }
@@ -39,7 +36,6 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
 
   const { initializeWithPrivateKey, disconnect: disconnectEtherspot } = useEtherspot();
 
-  // Get private key from Web3Auth provider
   const getPrivateKey = async (web3authProvider: IProvider): Promise<string> => {
     const privateKey = await web3authProvider.request({
       method: 'eth_private_key',
@@ -47,11 +43,9 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
     return privateKey as string;
   };
 
-  // Initialize Web3Auth on mount
   useEffect(() => {
     const init = async () => {
       try {
-        // Chain config for Coston2
         const chainConfig = {
           chainNamespace: CHAIN_NAMESPACES.EIP155,
           chainId: WEB3AUTH_CONFIG.chainConfig.chainId,
@@ -62,28 +56,24 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
           tickerName: WEB3AUTH_CONFIG.chainConfig.tickerName,
         };
 
-        // Create Ethereum private key provider
         const privateKeyProvider = new EthereumPrivateKeyProvider({
           config: { chainConfig },
         });
 
-        // Create Web3Auth instance with v10 API
-        // Cast privateKeyProvider to bypass version mismatch type error
+        // Web3Auth Modal v10 - pass privateKeyProvider
         const web3authInstance = new Web3Auth({
           clientId: WEB3AUTH_CONFIG.clientId,
           web3AuthNetwork: WEB3AUTH_NETWORK.SAPPHIRE_DEVNET,
-          privateKeyProvider: privateKeyProvider as unknown as Web3AuthOptions['privateKeyProvider'],
+          privateKeyProvider: privateKeyProvider as any,
         });
 
-        // Initialize Web3Auth
         await web3authInstance.init();
 
         setWeb3auth(web3authInstance);
         setIsInitialized(true);
-
         console.log('[Web3Auth] Initialized');
 
-        // Check if already connected (session exists)
+        // Restore session if exists
         if (web3authInstance.connected && web3authInstance.provider) {
           console.log('[Web3Auth] Existing session found');
           setProvider(web3authInstance.provider);
@@ -96,7 +86,6 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
               profileImage: user.profileImage,
             });
 
-            // Initialize Etherspot with the private key
             const privateKey = await getPrivateKey(web3authInstance.provider);
             await initializeWithPrivateKey(privateKey);
           } catch (err) {
@@ -105,13 +94,13 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error('[Web3Auth] Failed to initialize:', error);
+        setIsInitialized(true);
       }
     };
 
     init();
   }, [initializeWithPrivateKey]);
 
-  // Connect with Web3Auth modal
   const connect = useCallback(async () => {
     if (!web3auth) {
       throw new Error('Web3Auth not initialized');
@@ -120,6 +109,8 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
     setIsConnecting(true);
     try {
       console.log('[Web3Auth] Opening modal...');
+
+      // Use the modal's connect method which handles everything
       const web3authProvider = await web3auth.connect();
 
       if (!web3authProvider) {
@@ -128,7 +119,6 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
 
       setProvider(web3authProvider);
 
-      // Get user info
       const user = await web3auth.getUserInfo();
       setUserInfo({
         email: user.email,
@@ -138,7 +128,6 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
 
       console.log('[Web3Auth] Connected as:', user.name || user.email);
 
-      // Initialize Etherspot SDK with the derived private key
       const privateKey = await getPrivateKey(web3authProvider);
       await initializeWithPrivateKey(privateKey);
 
@@ -151,18 +140,32 @@ export function Web3AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [web3auth, initializeWithPrivateKey]);
 
-  // Disconnect from Web3Auth
   const disconnect = useCallback(async () => {
-    if (!web3auth) return;
+    console.log('[Web3Auth] Disconnecting...');
+
+    setProvider(null);
+    setUserInfo(null);
+    disconnectEtherspot();
 
     try {
-      await web3auth.logout();
-      setProvider(null);
-      setUserInfo(null);
-      disconnectEtherspot();
-      console.log('[Web3Auth] Disconnected');
-    } catch (error) {
-      console.error('[Web3Auth] Logout failed:', error);
+      if (typeof window !== 'undefined') {
+        Object.keys(localStorage).forEach(key => {
+          if (key.includes('Web3Auth') || key.includes('openlogin') || key.includes('torus')) {
+            localStorage.removeItem(key);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[Web3Auth] Storage cleanup error:', e);
+    }
+
+    if (web3auth) {
+      try {
+        await web3auth.logout();
+        console.log('[Web3Auth] Logged out');
+      } catch (error) {
+        console.error('[Web3Auth] Logout failed:', error);
+      }
     }
   }, [web3auth, disconnectEtherspot]);
 

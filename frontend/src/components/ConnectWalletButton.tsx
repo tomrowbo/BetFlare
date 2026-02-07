@@ -15,11 +15,17 @@ export function ConnectWalletButton() {
   const { disconnect: disconnectEtherspot } = useEtherspot();
 
   const handleDisconnect = async () => {
-    if (walletMode === 'smart_account') {
+    console.log('[ConnectButton] Disconnect clicked, walletMode:', walletMode);
+    try {
       await disconnectSocial();
       disconnectEtherspot();
+      console.log('[ConnectButton] Disconnect complete');
+    } catch (error) {
+      console.error('[ConnectButton] Disconnect error:', error);
     }
     setShowDropdown(false);
+    // Force page reload to clear any cached state
+    window.location.reload();
   };
 
   // Connected state - show account info
@@ -99,7 +105,7 @@ export function ConnectWalletButton() {
     <div className="flex items-center gap-2">
       {/* Social Login Button (Primary) */}
       <button
-        onClick={connectSocial}
+        onClick={() => connectSocial()}
         disabled={isConnecting || !isInitialized}
         className={cn(
           'flex items-center gap-2 px-5 py-2 font-display font-semibold text-sm tracking-wide transition-all',
