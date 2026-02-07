@@ -6,7 +6,11 @@ import { useQueryClient } from '@tanstack/react-query';
 import { parseUnits, formatUnits } from 'viem';
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { motion } from 'framer-motion';
+import { Vault, TrendingUp, Percent, Coins, ArrowDownToLine, ArrowUpFromLine, Wallet, CheckCircle2, Info } from 'lucide-react';
 import { Header } from '@/components/Header';
+import { PageContainer } from '@/components/PageContainer';
+import { cn } from '@/lib/utils';
 import {
   CONTRACTS,
   MARKETS,
@@ -23,7 +27,6 @@ export default function LiquidityPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const queryClient = useQueryClient();
 
-  // User balances
   const { data: usdtBalance } = useReadContract({
     address: CONTRACTS.usdt as `0x${string}`,
     abi: ERC20_ABI,
@@ -45,7 +48,6 @@ export default function LiquidityPage() {
     args: shareBalance ? [shareBalance as bigint] : undefined,
   });
 
-  // Vault stats
   const { data: totalAssets, isLoading: isLoadingAssets } = useReadContract({
     address: CONTRACTS.universalVault as `0x${string}`,
     abi: UNIVERSAL_VAULT_ABI,
@@ -66,7 +68,6 @@ export default function LiquidityPage() {
 
   const isLoadingVaultStats = isLoadingAssets || isLoadingFees;
 
-  // Market liquidity (from all FPMMs)
   const marketLiquidityContracts = MARKETS.flatMap((market) => [
     { address: market.fpmm as `0x${string}`, abi: FPMM_ABI, functionName: 'yesReserve' },
     { address: market.fpmm as `0x${string}`, abi: FPMM_ABI, functionName: 'noReserve' },
@@ -76,7 +77,6 @@ export default function LiquidityPage() {
     contracts: marketLiquidityContracts,
   });
 
-  // Allowance check
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: CONTRACTS.usdt as `0x${string}`,
     abi: ERC20_ABI,
@@ -84,7 +84,6 @@ export default function LiquidityPage() {
     args: address ? [address, CONTRACTS.universalVault as `0x${string}`] : undefined,
   });
 
-  // Write functions
   const { writeContractAsync: approveAsync } = useWriteContract();
   const { writeContract: deposit, data: depositHash } = useWriteContract();
   const { writeContract: withdraw, data: withdrawHash } = useWriteContract();
@@ -95,17 +94,14 @@ export default function LiquidityPage() {
 
   const publicClient = usePublicClient();
 
-  // Format values
   const formattedUsdtBalance = usdtBalance ? formatUnits(usdtBalance as bigint, 6) : '0';
   const formattedShareValue = shareValue ? formatUnits(shareValue as bigint, 6) : '0';
   const formattedTotalAssets = totalAssets ? formatUnits(totalAssets as bigint, 6) : '0';
   const formattedTotalFees = totalFeesReceived ? formatUnits(totalFeesReceived as bigint, 6) : '0';
 
-  // Fetch user's deposit/withdraw history for chart
   const [chartData, setChartData] = useState<{ time: string; value: number; type: string }[]>([]);
   const [netDeposited, setNetDeposited] = useState(0);
 
-  // Calculate actual profit = current balance - net deposits
   const userProfit = useMemo(() => {
     const currentBalance = Number(formattedShareValue);
     return currentBalance - netDeposited;
@@ -119,25 +115,21 @@ export default function LiquidityPage() {
       }
 
       try {
-        // Use Coston2 explorer API (RPC has 30-block limit which misses older events)
         const DEPOSIT_TOPIC = '0xdcbc1c05240f31ff3ad067ef1ee35ce4997762752e3a095284754544f4c709d7';
         const WITHDRAW_TOPIC = '0xfbde797d201c681b91056529119e0b02407c7bb96a4a2c75c01fc9667232c8db';
 
         const userAddressPadded = `0x000000000000000000000000${address.slice(2).toLowerCase()}`;
 
-        // Fetch all deposit events (filter client-side as explorer topic filtering unreliable)
         const depositResponse = await fetch(
           `https://coston2-explorer.flare.network/api?module=logs&action=getLogs&address=${CONTRACTS.universalVault}&topic0=${DEPOSIT_TOPIC}&fromBlock=0&toBlock=latest`
         );
         const depositData = await depositResponse.json();
 
-        // Fetch all withdraw events
         const withdrawResponse = await fetch(
           `https://coston2-explorer.flare.network/api?module=logs&action=getLogs&address=${CONTRACTS.universalVault}&topic0=${WITHDRAW_TOPIC}&fromBlock=0&toBlock=latest`
         );
         const withdrawData = await withdrawResponse.json();
 
-        // Parse and filter events for this user
         interface LogEntry {
           blockNumber: string;
           transactionIndex: string;
@@ -147,26 +139,22 @@ export default function LiquidityPage() {
 
         const depositEvents = (depositData.result || [])
           .filter((log: LogEntry) => {
-            // topic2 is owner for Deposit event
             return log.topics[2]?.toLowerCase() === userAddressPadded;
           })
           .map((log: LogEntry) => ({
             block: parseInt(log.blockNumber, 16),
             txIndex: parseInt(log.transactionIndex, 16),
-            // data contains: assets (uint256) + shares (uint256) = 64 bytes each
             assets: BigInt('0x' + log.data.slice(2, 66)),
             type: 'deposit' as const,
           }));
 
         const withdrawEvents = (withdrawData.result || [])
           .filter((log: LogEntry) => {
-            // topic3 is owner for Withdraw event
             return log.topics[3]?.toLowerCase() === userAddressPadded;
           })
           .map((log: LogEntry) => ({
             block: parseInt(log.blockNumber, 16),
             txIndex: parseInt(log.transactionIndex, 16),
-            // data contains: assets (uint256) + shares (uint256)
             assets: BigInt('0x' + log.data.slice(2, 66)),
             type: 'withdraw' as const,
           }));
@@ -178,7 +166,6 @@ export default function LiquidityPage() {
 
         console.log('Found events from explorer:', allEvents.length, allEvents);
 
-        // Build cumulative balance history and track net deposited
         let balance = 0;
         let totalDeposited = 0;
         let totalWithdrawn = 0;
@@ -202,10 +189,8 @@ export default function LiquidityPage() {
           });
         });
 
-        // Track net deposited for profit calculation
         setNetDeposited(totalDeposited - totalWithdrawn);
 
-        // Add current balance as final point if different (shows profit/loss)
         const currentBalance = Number(formattedShareValue);
         if (data.length === 1 || Math.abs(data[data.length - 1].value - currentBalance) > 0.01) {
           data.push({ time: 'Now', value: currentBalance, type: 'current' });
@@ -250,11 +235,9 @@ export default function LiquidityPage() {
 
     const depositAmount = parseUnits(amount, 6);
 
-    // Check if we need approval first
     if (needsApproval) {
       setIsApproving(true);
       try {
-        // Approve max amount
         const hash = await approveAsync({
           address: CONTRACTS.usdt as `0x${string}`,
           abi: ERC20_ABI,
@@ -262,7 +245,6 @@ export default function LiquidityPage() {
           args: [CONTRACTS.universalVault as `0x${string}`, parseUnits('1000000', 6)],
         });
 
-        // Wait for approval to be mined
         await publicClient?.waitForTransactionReceipt({ hash });
         await refetchAllowance();
       } catch (err) {
@@ -273,7 +255,6 @@ export default function LiquidityPage() {
       setIsApproving(false);
     }
 
-    // Now deposit
     deposit({
       address: CONTRACTS.universalVault as `0x${string}`,
       abi: UNIVERSAL_VAULT_ABI,
@@ -294,17 +275,14 @@ export default function LiquidityPage() {
 
   const isLoading = isApproving || isDepositing || isWithdrawing;
 
-  // Auto-refresh after successful transactions
   useEffect(() => {
     if (depositSuccess || withdrawSuccess) {
-      // Invalidate all queries to refetch vault stats, balances, etc.
       queryClient.invalidateQueries();
       setRefreshKey(prev => prev + 1);
       setAmount('');
     }
   }, [depositSuccess, withdrawSuccess, queryClient]);
 
-  // Show skeleton while loading initial vault data
   if (isLoadingVaultStats) {
     return (
       <main className="min-h-screen">
@@ -318,46 +296,75 @@ export default function LiquidityPage() {
     <main className="min-h-screen">
       <Header />
 
-      {/* Main Content */}
-      <div className="max-w-2xl mx-auto px-4 py-8">
-        {/* Page Title */}
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold mb-2">Liquidity Pool</h1>
-          <p className="text-[--text-secondary]">
+      <PageContainer maxWidth="sm">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          className="text-center mb-10"
+        >
+          <span className="inline-block px-3 py-1 border border-primary/20 bg-primary/5 text-primary text-xs font-medium mb-4 tracking-wider uppercase">
+            Liquidity
+          </span>
+          <h1 className="text-3xl md:text-5xl font-display font-bold text-white uppercase tracking-tighter leading-[1.1]">
+            Liquidity <span className="text-primary">Pool</span>
+          </h1>
+          <p className="text-muted-foreground text-base font-light leading-relaxed mt-3 max-w-md mx-auto">
             Deposit USDT0 to provide liquidity. Funds are immediately deployed to all markets.
           </p>
-        </div>
+        </motion.div>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="card text-center">
-            <div className="text-sm text-[--text-muted]">Pool TVL</div>
-            <div className="text-xl font-bold">${Number(formattedTotalAssets).toFixed(2)}</div>
-          </div>
-          <div className="card text-center">
-            <div className="text-sm text-[--text-muted]">Total Fees</div>
-            <div className="text-xl font-bold text-[--accent-green]">${Number(formattedTotalFees).toFixed(4)}</div>
-          </div>
-          <div className="card text-center">
-            <div className="text-sm text-[--text-muted]">Fee Rate</div>
-            <div className="text-xl font-bold">0.2%</div>
-          </div>
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+          className="grid grid-cols-3 gap-3 mb-6"
+        >
+          <VaultStatCard
+            icon={<Vault className="w-3.5 h-3.5 text-primary/60" />}
+            label="Pool TVL"
+            value={`$${Number(formattedTotalAssets).toFixed(2)}`}
+          />
+          <VaultStatCard
+            icon={<Coins className="w-3.5 h-3.5 text-green-400/60" />}
+            label="Total Fees"
+            value={`$${Number(formattedTotalFees).toFixed(4)}`}
+            valueColor="text-green-400"
+          />
+          <VaultStatCard
+            icon={<Percent className="w-3.5 h-3.5 text-primary/60" />}
+            label="Fee Rate"
+            value="0.2%"
+          />
+        </motion.div>
 
-        {/* Chart */}
-        <div className="card mb-6">
-          <div className="flex justify-between items-start mb-4">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
+          className="relative overflow-hidden rounded-lg bg-card/80 backdrop-blur-md border border-white/5 p-5 mb-6"
+        >
+          <div className="flex justify-between items-start mb-5">
             <div>
-              <div className="text-sm text-[--text-muted]">Your Balance</div>
-              <div className="text-3xl font-bold">${Number(formattedShareValue).toFixed(2)}</div>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-white/30 mb-1">
+                Your Balance
+              </div>
+              <div className="text-3xl font-display font-bold text-white">
+                ${Number(formattedShareValue).toFixed(2)}
+              </div>
             </div>
             <div className="text-right">
-              <div className="text-sm text-[--text-muted]">Your Profit</div>
-              <div className={`text-xl font-bold ${userProfit >= 0 ? 'text-[--accent-green]' : 'text-[--accent-red]'}`}>
+              <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-white/30 mb-1">
+                Your Profit
+              </div>
+              <div className={cn(
+                "text-xl font-mono font-bold",
+                userProfit >= 0 ? "text-green-400" : "text-red-400"
+              )}>
                 {userProfit >= 0 ? '+' : ''}{userProfit.toFixed(4)}
               </div>
-              <div className="text-xs text-[--text-muted]">
-                (deposited: ${netDeposited.toFixed(2)})
+              <div className="text-[10px] uppercase tracking-[0.15em] font-bold text-white/20 mt-0.5">
+                deposited: ${netDeposited.toFixed(2)}
               </div>
             </div>
           </div>
@@ -366,50 +373,75 @@ export default function LiquidityPage() {
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="hsl(26, 85%, 54%)" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="hsl(26, 85%, 54%)" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
-                <XAxis dataKey="time" axisLine={false} tickLine={false} tick={{ fill: '#888', fontSize: 10 }} />
+                <XAxis
+                  dataKey="time"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fill: 'rgba(255,255,255,0.25)', fontSize: 9, fontFamily: 'var(--font-display)' }}
+                />
                 <YAxis hide domain={['dataMin - 0.1', 'dataMax + 0.1']} />
                 <Tooltip
-                  contentStyle={{ background: '#1e1e1e', border: 'none', borderRadius: '8px' }}
-                  labelStyle={{ color: '#888' }}
-                  formatter={(value) => [`$${Number(value).toFixed(2)}`, 'TVL']}
+                  contentStyle={{
+                    background: 'hsl(0, 0%, 8%)',
+                    border: '1px solid rgba(255,255,255,0.05)',
+                    borderRadius: '8px',
+                    backdropFilter: 'blur(12px)',
+                  }}
+                  labelStyle={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.15em', fontWeight: 700 }}
+                  itemStyle={{ color: 'hsl(26, 85%, 54%)' }}
+                  formatter={(value) => [`$${Number(value).toFixed(2)}`, 'Value']}
                 />
-                <Area type="monotone" dataKey="value" stroke="#22c55e" strokeWidth={2} fill="url(#colorValue)" />
+                <Area
+                  type="monotone"
+                  dataKey="value"
+                  stroke="hsl(26, 85%, 54%)"
+                  strokeWidth={2}
+                  fill="url(#colorValue)"
+                />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </motion.div>
 
-        {/* Deposit/Withdraw Card */}
-        <div className="card">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+          className="relative overflow-hidden rounded-lg bg-card/80 backdrop-blur-md border border-white/5 p-5"
+        >
           <div className="flex gap-2 mb-6">
             <button
               onClick={() => setMode('deposit')}
-              className={`flex-1 py-3 rounded-lg font-semibold transition ${
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-display font-bold text-sm uppercase tracking-wide transition-all",
                 mode === 'deposit'
-                  ? 'bg-[--accent-green] text-white'
-                  : 'bg-[--bg-secondary] text-[--text-secondary] hover:bg-[--bg-hover]'
-              }`}
+                  ? 'bg-green-500 text-white shadow-[0_0_20px_rgba(34,197,94,0.15)]'
+                  : 'bg-white/[0.03] border border-white/5 text-white/40 hover:text-white/60 hover:border-white/10'
+              )}
             >
+              <ArrowDownToLine className="w-4 h-4" />
               Deposit
             </button>
             <button
               onClick={() => setMode('withdraw')}
-              className={`flex-1 py-3 rounded-lg font-semibold transition ${
+              className={cn(
+                "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-display font-bold text-sm uppercase tracking-wide transition-all",
                 mode === 'withdraw'
-                  ? 'bg-[--accent-red] text-white'
-                  : 'bg-[--bg-secondary] text-[--text-secondary] hover:bg-[--bg-hover]'
-              }`}
+                  ? 'bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.15)]'
+                  : 'bg-white/[0.03] border border-white/5 text-white/40 hover:text-white/60 hover:border-white/10'
+              )}
             >
+              <ArrowUpFromLine className="w-4 h-4" />
               Withdraw
             </button>
           </div>
 
           <div className="mb-6">
-            <label className="block text-sm text-[--text-secondary] mb-2">
+            <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-white/30 mb-2">
               Amount (USDT0)
             </label>
             <div className="relative">
@@ -418,17 +450,17 @@ export default function LiquidityPage() {
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
-                className="input text-xl pr-20"
+                className="w-full bg-white/[0.03] border border-white/5 rounded-lg px-4 py-3.5 text-xl font-mono text-white placeholder:text-white/15 focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all pr-20"
                 disabled={!isConnected}
               />
               <button
                 onClick={() => setAmount(mode === 'deposit' ? formattedUsdtBalance : formattedShareValue)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-[--accent-blue] hover:underline"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] uppercase tracking-[0.15em] font-bold text-primary hover:text-primary/80 transition-colors"
               >
                 MAX
               </button>
             </div>
-            <div className="text-sm text-[--text-muted] mt-2">
+            <div className="text-xs text-white/30 mt-2 font-mono">
               {mode === 'deposit'
                 ? `Balance: ${Number(formattedUsdtBalance).toFixed(2)} USDT0`
                 : `Available: ${Number(formattedShareValue).toFixed(2)} USDT0`
@@ -439,7 +471,11 @@ export default function LiquidityPage() {
           {!isConnected ? (
             <ConnectButton.Custom>
               {({ openConnectModal }) => (
-                <button onClick={openConnectModal} className="btn btn-outline w-full py-4 text-lg">
+                <button
+                  onClick={openConnectModal}
+                  className="w-full flex items-center justify-center gap-2 py-4 rounded-lg border border-white/10 bg-white/[0.03] text-white/60 font-display font-bold text-sm uppercase tracking-wide hover:border-primary/30 hover:text-white transition-all"
+                >
+                  <Wallet className="w-4 h-4" />
                   Connect Wallet
                 </button>
               )}
@@ -448,7 +484,12 @@ export default function LiquidityPage() {
             <button
               onClick={mode === 'deposit' ? handleDeposit : handleWithdraw}
               disabled={!amount || isLoading}
-              className={`btn w-full py-4 text-lg ${mode === 'deposit' ? 'btn-yes active' : 'btn-no active'}`}
+              className={cn(
+                "w-full py-4 rounded-lg font-display font-bold text-sm uppercase tracking-wide transition-all disabled:opacity-40 disabled:cursor-not-allowed",
+                mode === 'deposit'
+                  ? 'bg-green-500 text-white hover:bg-green-500/80 shadow-[0_0_25px_rgba(34,197,94,0.15)]'
+                  : 'bg-red-500 text-white hover:bg-red-500/80 shadow-[0_0_25px_rgba(239,68,68,0.15)]'
+              )}
             >
               {isApproving
                 ? 'Approving...'
@@ -463,17 +504,57 @@ export default function LiquidityPage() {
           )}
 
           {(depositSuccess || withdrawSuccess) && (
-            <div className="mt-4 p-3 bg-[--accent-green]/10 text-[--accent-green] rounded text-center">
-              Transaction successful!
-            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-4 flex items-center justify-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20"
+            >
+              <CheckCircle2 className="w-4 h-4 text-green-400" />
+              <span className="text-sm font-display font-semibold text-green-400">
+                Transaction successful!
+              </span>
+            </motion.div>
           )}
-        </div>
+        </motion.div>
 
-        {/* Info */}
-        <div className="mt-6 p-4 bg-[--bg-secondary] rounded-lg text-sm text-[--text-secondary] text-center">
-          Earn 0.2% fee on every trade. Liquidity is split equally across all active markets.
-        </div>
-      </div>
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.25, ease: [0.16, 1, 0.3, 1] }}
+          className="mt-6 flex items-center justify-center gap-2 p-4 rounded-lg bg-white/[0.02] border border-white/5"
+        >
+          <Info className="w-3.5 h-3.5 text-white/20 shrink-0" />
+          <span className="text-xs text-white/30 font-light">
+            Earn 0.2% fee on every trade. Liquidity is split equally across all active markets.
+          </span>
+        </motion.div>
+      </PageContainer>
     </main>
+  );
+}
+
+function VaultStatCard({
+  icon,
+  label,
+  value,
+  valueColor = "text-white",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  valueColor?: string;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-lg bg-card/80 backdrop-blur-md border border-white/5 p-4 text-center">
+      <div className="flex items-center justify-center gap-1.5 mb-2">
+        {icon}
+        <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-white/30">
+          {label}
+        </span>
+      </div>
+      <div className={cn("text-xl font-display font-bold", valueColor)}>
+        {value}
+      </div>
+    </div>
   );
 }

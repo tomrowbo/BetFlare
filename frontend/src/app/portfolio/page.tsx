@@ -2,243 +2,16 @@
 
 import { useAccount, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { formatUnits } from 'viem';
+import { motion } from 'framer-motion';
+import { Zap, Clock, Gift, CheckCircle2, TrendingUp, TrendingDown, Wallet, BarChart3 } from 'lucide-react';
 import { Header } from '@/components/Header';
+import { PageContainer } from '@/components/PageContainer';
+import { PositionCard, MarketPosition } from '@/components/portfolio/PositionCard';
+import { RedeemedHistoryCard, RedeemedPosition } from '@/components/portfolio/RedeemedHistoryCard';
 import { CONTRACTS, MARKETS, Market, FPMM_ABI, CONDITIONAL_TOKENS_ABI, FTSO_RESOLVER_ABI } from '@/config/contracts';
 import { PositionCardSkeleton, StatsCardSkeleton, Skeleton } from '@/components/Skeleton';
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
-
-// Interface for redeemed history
-interface RedeemedPosition {
-  market: Market;
-  payout: number;
-  yesWon: boolean;
-  txHash: string;
-  blockNumber: number;
-}
-
-interface MarketPosition {
-  market: Market;
-  yesBalance: number;
-  noBalance: number;
-  yesPrice: number;
-  noPrice: number;
-  resolved: boolean;
-  yesValue: number;
-  noValue: number;
-  yesPositionId: bigint;
-  noPositionId: bigint;
-  yesWon: boolean | null; // null if not resolved, true/false if resolved
-}
-
-function PositionCard({
-  position,
-  onResolve,
-  onRedeem,
-  isResolving,
-  isRedeeming,
-}: {
-  position: MarketPosition;
-  onResolve: () => void;
-  onRedeem: () => void;
-  isResolving: boolean;
-  isRedeeming: boolean;
-}) {
-  const now = Math.floor(Date.now() / 1000);
-  const isPastResolution = now >= position.market.resolutionTime;
-  const canResolve = isPastResolution && !position.resolved;
-
-  // Calculate redeemable amount (only winning side pays out)
-  const hasWinningPosition = position.resolved && position.yesWon !== null && (
-    (position.yesWon && position.yesBalance > 0) || (!position.yesWon && position.noBalance > 0)
-  );
-  const redeemableAmount = position.resolved && position.yesWon !== null
-    ? (position.yesWon ? position.yesBalance : position.noBalance)
-    : 0;
-
-  return (
-    <div className="card">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">{position.market.icon}</span>
-          <div>
-            <Link href={`/markets/${position.market.slug}`} className="text-lg font-bold hover:text-[--accent-blue]">
-              {position.market.title}
-            </Link>
-            <div className="text-sm text-[--text-secondary]">
-              {position.resolved
-                ? 'Resolved'
-                : isPastResolution
-                  ? `Resolution time passed - ${new Date(position.market.resolutionTime * 1000).toLocaleString()}`
-                  : `Resolves ${new Date(position.market.resolutionTime * 1000).toLocaleString()}`
-              }
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {position.resolved ? (
-            <div className="flex items-center gap-2">
-              {position.yesWon !== null && (
-                <span className={`px-3 py-1 text-sm font-bold rounded ${
-                  position.yesWon
-                    ? 'bg-[--accent-green]/20 text-[--accent-green]'
-                    : 'bg-[--accent-red]/20 text-[--accent-red]'
-                }`}>
-                  {position.yesWon ? 'YES WON' : 'NO WON'}
-                </span>
-              )}
-              {hasWinningPosition && (
-                <button
-                  onClick={onRedeem}
-                  disabled={isRedeeming}
-                  className="px-4 py-2 bg-[--accent-green] text-white text-sm font-semibold rounded-lg hover:bg-[--accent-green]/80 transition disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isRedeeming ? 'Redeeming...' : `Redeem $${redeemableAmount.toFixed(2)}`}
-                </button>
-              )}
-            </div>
-          ) : canResolve ? (
-            <button
-              onClick={onResolve}
-              disabled={isResolving}
-              className="px-4 py-2 bg-[--accent-orange] text-white text-sm font-semibold rounded-lg hover:bg-[--accent-orange]/80 transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isResolving ? 'Resolving...' : 'Resolve Market'}
-            </button>
-          ) : (
-            <span className="px-2 py-1 bg-[--accent-green] text-white text-xs rounded">Active</span>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        {position.yesBalance > 0 && (
-          <div className={`p-4 rounded-lg border ${
-            position.resolved
-              ? position.yesWon
-                ? 'bg-[--accent-green]/20 border-[--accent-green]/40'
-                : 'bg-gray-500/10 border-gray-500/20 opacity-60'
-              : 'bg-[--accent-green]/10 border-[--accent-green]/20'
-          }`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className={`font-semibold ${position.resolved && !position.yesWon ? 'text-gray-400' : 'text-[--accent-green]'}`}>
-                YES {position.resolved && (position.yesWon ? '(Winner)' : '(Lost)')}
-              </span>
-              {!position.resolved && (
-                <span className="text-sm text-[--text-muted]">@ {(position.yesPrice * 100).toFixed(0)}¢</span>
-              )}
-            </div>
-            <div className="text-2xl font-bold">{position.yesBalance.toFixed(2)}</div>
-            <div className="text-sm text-[--text-secondary]">shares</div>
-            <div className="mt-2 pt-2 border-t border-[--border-color]">
-              {position.resolved ? (
-                <div className="flex justify-between text-sm">
-                  <span className="text-[--text-muted]">Payout</span>
-                  <span className={`font-bold ${position.yesWon ? 'text-[--accent-green]' : 'text-gray-400'}`}>
-                    ${position.yesWon ? position.yesBalance.toFixed(2) : '0.00'}
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[--text-muted]">Value</span>
-                    <span className="font-medium">${position.yesValue.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[--text-muted]">If YES wins</span>
-                    <span className="font-medium text-[--accent-green]">${position.yesBalance.toFixed(2)}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {position.noBalance > 0 && (
-          <div className={`p-4 rounded-lg border ${
-            position.resolved
-              ? !position.yesWon
-                ? 'bg-[--accent-red]/20 border-[--accent-red]/40'
-                : 'bg-gray-500/10 border-gray-500/20 opacity-60'
-              : 'bg-[--accent-red]/10 border-[--accent-red]/20'
-          }`}>
-            <div className="flex items-center justify-between mb-2">
-              <span className={`font-semibold ${position.resolved && position.yesWon ? 'text-gray-400' : 'text-[--accent-red]'}`}>
-                NO {position.resolved && (!position.yesWon ? '(Winner)' : '(Lost)')}
-              </span>
-              {!position.resolved && (
-                <span className="text-sm text-[--text-muted]">@ {(position.noPrice * 100).toFixed(0)}¢</span>
-              )}
-            </div>
-            <div className="text-2xl font-bold">{position.noBalance.toFixed(2)}</div>
-            <div className="text-sm text-[--text-secondary]">shares</div>
-            <div className="mt-2 pt-2 border-t border-[--border-color]">
-              {position.resolved ? (
-                <div className="flex justify-between text-sm">
-                  <span className="text-[--text-muted]">Payout</span>
-                  <span className={`font-bold ${!position.yesWon ? 'text-[--accent-red]' : 'text-gray-400'}`}>
-                    ${!position.yesWon ? position.noBalance.toFixed(2) : '0.00'}
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[--text-muted]">Value</span>
-                    <span className="font-medium">${position.noValue.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-[--text-muted]">If NO wins</span>
-                    <span className="font-medium text-[--accent-red]">${position.noBalance.toFixed(2)}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Component for redeemed history items
-function RedeemedHistoryCard({ item }: { item: RedeemedPosition }) {
-  return (
-    <div className="card bg-[--bg-secondary]/50">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-xl">{item.market.icon}</span>
-          <div>
-            <Link href={`/markets/${item.market.slug}`} className="font-semibold hover:text-[--accent-blue]">
-              {item.market.title}
-            </Link>
-            <div className="flex items-center gap-2 text-sm text-[--text-muted]">
-              <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                item.yesWon
-                  ? 'bg-[--accent-green]/20 text-[--accent-green]'
-                  : 'bg-[--accent-red]/20 text-[--accent-red]'
-              }`}>
-                {item.yesWon ? 'YES WON' : 'NO WON'}
-              </span>
-              <span>•</span>
-              <a
-                href={`https://coston2-explorer.flare.network/tx/${item.txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[--accent-blue] hover:underline"
-              >
-                View tx
-              </a>
-            </div>
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-lg font-bold text-[--accent-green]">+${item.payout.toFixed(2)}</div>
-          <div className="text-xs text-[--text-muted]">Redeemed</div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function PortfolioPage() {
   const { address, isConnected } = useAccount();
@@ -247,20 +20,15 @@ export default function PortfolioPage() {
   const [redeemedHistory, setRedeemedHistory] = useState<RedeemedPosition[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-  // Build contracts array for reading all market data
   const marketContracts = useMemo(() => {
     if (!address) return [];
 
     return MARKETS.flatMap((market) => [
-      // Get position IDs from FPMM
       { address: market.fpmm as `0x${string}`, abi: FPMM_ABI, functionName: 'yesPositionId' },
       { address: market.fpmm as `0x${string}`, abi: FPMM_ABI, functionName: 'noPositionId' },
-      // Get prices
       { address: market.fpmm as `0x${string}`, abi: FPMM_ABI, functionName: 'getYesPrice' },
       { address: market.fpmm as `0x${string}`, abi: FPMM_ABI, functionName: 'getNoPrice' },
-      // Get resolved status
       { address: market.fpmm as `0x${string}`, abi: FPMM_ABI, functionName: 'resolved' },
-      // Get payout numerator for YES outcome (to know who won)
       { address: CONTRACTS.conditionalTokens as `0x${string}`, abi: CONDITIONAL_TOKENS_ABI, functionName: 'getPayoutNumerator', args: [market.conditionId as `0x${string}`, BigInt(0)] },
     ]);
   }, [address]);
@@ -269,7 +37,6 @@ export default function PortfolioPage() {
     contracts: marketContracts,
   });
 
-  // Fetch redeemed history from blockchain events
   useEffect(() => {
     async function fetchRedeemedHistory() {
       if (!address) {
@@ -279,7 +46,6 @@ export default function PortfolioPage() {
 
       setIsLoadingHistory(true);
       try {
-        // PayoutRedemption(address indexed,bytes32 indexed,uint256[],uint256) event topic
         const PAYOUT_TOPIC = '0x9140a6a270ef945260c03894b3c6b3b2695e9d5101feef0ff24fec960cfd3224';
         const userPadded = `0x000000000000000000000000${address.slice(2).toLowerCase()}`;
 
@@ -295,17 +61,11 @@ export default function PortfolioPage() {
           topics: string[];
         }
 
-        // Filter for user's redemptions (topic1 is redeemer)
         const userRedemptions = (data.result || [])
           .filter((log: LogEntry) => log.topics[1]?.toLowerCase() === userPadded)
           .map((log: LogEntry) => {
-            // Parse conditionId from topics[2]
             const conditionId = log.topics[2];
-            // Data format: [offset (32 bytes)][payout (32 bytes)][indexSets array...]
-            // Payout is in bytes 32-64 of data (after the offset)
             const payout = BigInt('0x' + log.data.slice(66, 130));
-
-            // Find matching market
             const market = MARKETS.find(m => m.conditionId.toLowerCase() === conditionId?.toLowerCase());
 
             return {
@@ -316,13 +76,10 @@ export default function PortfolioPage() {
               market,
             };
           })
-          .filter((r: { market: Market | undefined; payout: number }) => r.market && r.payout > 0); // Only include known markets with positive payout
+          .filter((r: { market: Market | undefined; payout: number }) => r.market && r.payout > 0);
 
-        // Now we need to determine yesWon for each redemption
-        // We'll fetch this from the marketData we already have
         const processedRedemptions: RedeemedPosition[] = [];
         for (const r of userRedemptions) {
-          // Find the market index
           const marketIndex = MARKETS.findIndex(m => m.conditionId.toLowerCase() === r.conditionId?.toLowerCase());
           if (marketIndex >= 0 && marketData) {
             const baseIndex = marketIndex * 6;
@@ -351,12 +108,11 @@ export default function PortfolioPage() {
     fetchRedeemedHistory();
   }, [address, marketData]);
 
-  // Build contracts for user balances (needs position IDs from previous query)
   const balanceContracts = useMemo(() => {
     if (!address || !marketData) return [];
 
     return MARKETS.flatMap((market, index) => {
-      const baseIndex = index * 6; // Now 6 items per market
+      const baseIndex = index * 6;
       const yesPositionId = marketData[baseIndex]?.result as bigint | undefined;
       const noPositionId = marketData[baseIndex + 1]?.result as bigint | undefined;
 
@@ -385,7 +141,6 @@ export default function PortfolioPage() {
 
   const isLoading = isLoadingMarkets || isLoadingBalances;
 
-  // Process all data into positions
   const positions = useMemo((): MarketPosition[] => {
     if (!marketData || !balanceData) return [];
 
@@ -393,7 +148,7 @@ export default function PortfolioPage() {
     let balanceIndex = 0;
 
     MARKETS.forEach((market, index) => {
-      const baseIndex = index * 6; // Now 6 items per market
+      const baseIndex = index * 6;
       const yesPositionId = marketData[baseIndex]?.result as bigint | undefined;
       const noPositionId = marketData[baseIndex + 1]?.result as bigint | undefined;
       const yesPrice = marketData[baseIndex + 2]?.result as bigint | undefined;
@@ -412,8 +167,6 @@ export default function PortfolioPage() {
       const formattedYesPrice = yesPrice ? Number(formatUnits(yesPrice, 18)) : 0.5;
       const formattedNoPrice = noPrice ? Number(formatUnits(noPrice, 18)) : 0.5;
 
-      // Determine who won (yesPayoutNumerator == 1 means YES won, == 0 means NO won)
-      // Only valid if market is resolved
       const yesWon = resolved && yesPayoutNumerator !== undefined
         ? yesPayoutNumerator === BigInt(1)
         : null;
@@ -438,7 +191,6 @@ export default function PortfolioPage() {
     return result;
   }, [marketData, balanceData]);
 
-  // Categorize positions
   const { activePositions, awaitingPositions, resolvedPositions } = useMemo(() => {
     const now = Math.floor(Date.now() / 1000);
     const active: MarketPosition[] = [];
@@ -458,7 +210,6 @@ export default function PortfolioPage() {
     return { activePositions: active, awaitingPositions: awaiting, resolvedPositions: resolved };
   }, [positions]);
 
-  // Calculate totals
   const totals = useMemo(() => {
     let yesValue = 0;
     let noValue = 0;
@@ -468,19 +219,16 @@ export default function PortfolioPage() {
       noValue += pos.noValue;
     }
 
-    // Add total redeemed
     const totalRedeemed = redeemedHistory.reduce((sum, item) => sum + item.payout, 0);
 
     return { yesValue, noValue, totalValue: yesValue + noValue, totalRedeemed };
   }, [positions, redeemedHistory]);
 
-  // Resolve market transaction
   const { writeContract: writeResolve, data: resolveTxHash } = useWriteContract();
   const { isLoading: isConfirmingResolve } = useWaitForTransactionReceipt({
     hash: resolveTxHash,
   });
 
-  // Redeem transaction
   const { writeContract: writeRedeem, data: redeemTxHash } = useWriteContract();
   const { isLoading: isConfirmingRedeem } = useWaitForTransactionReceipt({
     hash: redeemTxHash,
@@ -512,27 +260,53 @@ export default function PortfolioPage() {
     <main className="min-h-screen">
       <Header />
 
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold mb-2">Portfolio</h1>
-        <p className="text-[--text-secondary] mb-8">Your prediction market positions</p>
+      <PageContainer maxWidth="md">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+          className="mb-10"
+        >
+          <span className="inline-block px-3 py-1 border border-primary/20 bg-primary/5 text-primary text-xs font-medium mb-4 tracking-wider uppercase">
+            Portfolio
+          </span>
+          <h1 className="text-3xl md:text-5xl font-display font-bold text-white uppercase tracking-tighter leading-[1.1]">
+            Your <span className="text-primary">Positions</span>
+          </h1>
+          <p className="text-muted-foreground text-base font-light leading-relaxed mt-3">
+            Track and manage your prediction market positions
+          </p>
+        </motion.div>
 
         {!isConnected ? (
-          <div className="card text-center py-12">
-            <p className="text-[--text-secondary] mb-4">Connect your wallet to view your positions</p>
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="relative overflow-hidden rounded-lg bg-card/80 backdrop-blur-md border border-white/5 text-center py-16 px-8"
+          >
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-5">
+              <Wallet className="w-7 h-7 text-primary" />
+            </div>
+            <p className="text-muted-foreground text-lg font-light mb-2">
+              Connect your wallet to view your positions
+            </p>
+            <p className="text-white/20 text-sm">
+              Your active bets, results, and redemption history will appear here
+            </p>
+          </motion.div>
         ) : isLoading ? (
           <>
-            {/* Loading skeleton for portfolio summary */}
-            <div className="grid grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10">
+              <StatsCardSkeleton />
               <StatsCardSkeleton />
               <StatsCardSkeleton />
               <StatsCardSkeleton />
             </div>
-            {/* Loading skeleton for positions */}
-            <section className="mb-8">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-6 h-6 bg-[--bg-secondary] rounded animate-pulse" />
-                <div className="w-32 h-6 bg-[--bg-secondary] rounded animate-pulse" />
+            <section className="mb-10">
+              <div className="flex items-center gap-2 mb-5">
+                <div className="w-5 h-5 bg-white/5 rounded animate-pulse" />
+                <div className="w-36 h-5 bg-white/5 rounded animate-pulse" />
               </div>
               <div className="space-y-4">
                 <PositionCardSkeleton />
@@ -541,46 +315,71 @@ export default function PortfolioPage() {
             </section>
           </>
         ) : !hasPositions ? (
-          <div className="card text-center py-12">
-            <p className="text-[--text-secondary] mb-4">You don&apos;t have any positions yet</p>
-            <a href="/" className="text-[--accent-blue] hover:underline">Browse markets to place your first bet</a>
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+            className="relative overflow-hidden rounded-lg bg-card/80 backdrop-blur-md border border-white/5 text-center py-16 px-8"
+          >
+            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-5">
+              <BarChart3 className="w-7 h-7 text-primary" />
+            </div>
+            <p className="text-muted-foreground text-lg font-light mb-3">
+              You don&apos;t have any positions yet
+            </p>
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 text-sm font-display font-semibold text-primary hover:text-primary/80 uppercase tracking-wide transition-colors"
+            >
+              Browse markets to place your first bet
+            </Link>
+          </motion.div>
         ) : (
           <>
-            {/* Portfolio Summary */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
-              <div className="card text-center">
-                <div className="text-sm text-[--text-muted]">Active Value</div>
-                <div className="text-2xl font-bold">${totals.totalValue.toFixed(2)}</div>
-              </div>
-              <div className="card text-center">
-                <div className="text-sm text-[--text-muted]">YES Positions</div>
-                <div className="text-2xl font-bold text-[--accent-green]">${totals.yesValue.toFixed(2)}</div>
-              </div>
-              <div className="card text-center">
-                <div className="text-sm text-[--text-muted]">NO Positions</div>
-                <div className="text-2xl font-bold text-[--accent-red]">${totals.noValue.toFixed(2)}</div>
-              </div>
-              <div className="card text-center">
-                <div className="text-sm text-[--text-muted]">Total Redeemed</div>
-                <div className="text-2xl font-bold text-[--accent-green]">
-                  {isLoadingHistory ? (
-                    <span className="inline-block w-16 h-7 bg-[--bg-secondary] rounded animate-pulse" />
-                  ) : (
-                    `$${totals.totalRedeemed.toFixed(2)}`
-                  )}
-                </div>
-              </div>
-            </div>
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
+              className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-10"
+            >
+              <StatCard
+                icon={<BarChart3 className="w-4 h-4 text-primary/60" />}
+                label="Active Value"
+                value={`$${totals.totalValue.toFixed(2)}`}
+              />
+              <StatCard
+                icon={<TrendingUp className="w-4 h-4 text-green-400/60" />}
+                label="YES Positions"
+                value={`$${totals.yesValue.toFixed(2)}`}
+                valueColor="text-green-400"
+              />
+              <StatCard
+                icon={<TrendingDown className="w-4 h-4 text-red-400/60" />}
+                label="NO Positions"
+                value={`$${totals.noValue.toFixed(2)}`}
+                valueColor="text-red-400"
+              />
+              <StatCard
+                icon={<CheckCircle2 className="w-4 h-4 text-green-400/60" />}
+                label="Redeemed"
+                value={
+                  isLoadingHistory
+                    ? undefined
+                    : `$${totals.totalRedeemed.toFixed(2)}`
+                }
+                valueColor="text-green-400"
+                isLoading={isLoadingHistory}
+              />
+            </motion.div>
 
-            {/* Active Positions */}
             {activePositions.length > 0 && (
-              <section className="mb-8">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <span className="text-lg">⚡</span> Active Positions
-                </h2>
+              <PositionSection
+                icon={<Zap className="w-4 h-4 text-primary" />}
+                title="Active Positions"
+                delay={0.15}
+              >
                 <div className="space-y-4">
-                  {activePositions.map((pos) => (
+                  {activePositions.map((pos, i) => (
                     <PositionCard
                       key={pos.market.slug}
                       position={pos}
@@ -588,21 +387,22 @@ export default function PortfolioPage() {
                       onRedeem={() => handleRedeem(pos.market)}
                       isResolving={resolvingMarketId === pos.market.marketId && isConfirmingResolve}
                       isRedeeming={redeemingMarketId === pos.market.marketId && isConfirmingRedeem}
+                      index={i}
                     />
                   ))}
                 </div>
-              </section>
+              </PositionSection>
             )}
 
-            {/* Awaiting Resolution */}
             {awaitingPositions.length > 0 && (
-              <section className="mb-8">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <span className="text-lg">⏳</span> Awaiting Resolution
-                  <span className="text-sm font-normal text-[--text-muted]">- Click to resolve and claim winnings</span>
-                </h2>
+              <PositionSection
+                icon={<Clock className="w-4 h-4 text-primary" />}
+                title="Awaiting Resolution"
+                subtitle="Click to resolve and claim winnings"
+                delay={0.2}
+              >
                 <div className="space-y-4">
-                  {awaitingPositions.map((pos) => (
+                  {awaitingPositions.map((pos, i) => (
                     <PositionCard
                       key={pos.market.slug}
                       position={pos}
@@ -610,21 +410,22 @@ export default function PortfolioPage() {
                       onRedeem={() => handleRedeem(pos.market)}
                       isResolving={resolvingMarketId === pos.market.marketId && isConfirmingResolve}
                       isRedeeming={redeemingMarketId === pos.market.marketId && isConfirmingRedeem}
+                      index={i}
                     />
                   ))}
                 </div>
-              </section>
+              </PositionSection>
             )}
 
-            {/* Awaiting Redemption */}
             {resolvedPositions.length > 0 && (
-              <section className="mb-8">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <span className="text-lg">🎁</span> Awaiting Redemption
-                  <span className="text-sm font-normal text-[--text-muted]">- Claim your winnings</span>
-                </h2>
+              <PositionSection
+                icon={<Gift className="w-4 h-4 text-green-400" />}
+                title="Awaiting Redemption"
+                subtitle="Claim your winnings"
+                delay={0.25}
+              >
                 <div className="space-y-4">
-                  {resolvedPositions.map((pos) => (
+                  {resolvedPositions.map((pos, i) => (
                     <PositionCard
                       key={pos.market.slug}
                       position={pos}
@@ -632,45 +433,114 @@ export default function PortfolioPage() {
                       onRedeem={() => handleRedeem(pos.market)}
                       isResolving={false}
                       isRedeeming={redeemingMarketId === pos.market.marketId && isConfirmingRedeem}
+                      index={i}
                     />
                   ))}
                 </div>
-              </section>
+              </PositionSection>
             )}
 
-            {/* Redeemed History */}
             {(isLoadingHistory || redeemedHistory.length > 0) && (
-              <section className="mb-8">
-                <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-                  <span className="text-lg">✅</span> Redeemed History
-                </h2>
+              <PositionSection
+                icon={<CheckCircle2 className="w-4 h-4 text-green-400" />}
+                title="Redeemed History"
+                delay={0.3}
+              >
                 {isLoadingHistory ? (
                   <div className="space-y-3">
-                    <div className="card bg-[--bg-secondary]/50">
+                    <div className="rounded-lg bg-card/50 border border-white/5 p-4">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <Skeleton width={32} height={32} rounded="lg" />
+                          <Skeleton width={32} height={32} rounded="full" />
                           <div>
-                            <Skeleton width={200} height={18} className="mb-2" />
-                            <Skeleton width={120} height={14} />
+                            <Skeleton width={200} height={16} className="mb-2" />
+                            <Skeleton width={120} height={12} />
                           </div>
                         </div>
-                        <Skeleton width={80} height={24} />
+                        <Skeleton width={80} height={22} />
                       </div>
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {redeemedHistory.map((item, i) => (
-                      <RedeemedHistoryCard key={`${item.txHash}-${i}`} item={item} />
+                      <RedeemedHistoryCard key={`${item.txHash}-${i}`} item={item} index={i} />
                     ))}
                   </div>
                 )}
-              </section>
+              </PositionSection>
             )}
           </>
         )}
-      </div>
+      </PageContainer>
     </main>
+  );
+}
+
+function StatCard({
+  icon,
+  label,
+  value,
+  valueColor = "text-white",
+  isLoading = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value?: string;
+  valueColor?: string;
+  isLoading?: boolean;
+}) {
+  return (
+    <div className="relative overflow-hidden rounded-lg bg-card/80 backdrop-blur-md border border-white/5 p-4 text-center">
+      <div className="flex items-center justify-center gap-1.5 mb-2">
+        {icon}
+        <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-white/30">
+          {label}
+        </span>
+      </div>
+      <div className={`text-xl md:text-2xl font-display font-bold ${valueColor}`}>
+        {isLoading ? (
+          <span className="inline-block w-16 h-7 bg-white/5 rounded animate-pulse" />
+        ) : (
+          value
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PositionSection({
+  icon,
+  title,
+  subtitle,
+  delay = 0,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  delay?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <motion.section
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] }}
+      className="mb-10"
+    >
+      <div className="flex items-center gap-2 mb-5">
+        {icon}
+        <h2 className="text-sm font-display font-bold text-white uppercase tracking-wide">
+          {title}
+        </h2>
+        {subtitle && (
+          <span className="text-[10px] uppercase tracking-[0.15em] font-bold text-white/20 ml-1">
+            — {subtitle}
+          </span>
+        )}
+      </div>
+      {children}
+    </motion.section>
   );
 }

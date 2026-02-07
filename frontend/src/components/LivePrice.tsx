@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { TrendingUp, TrendingDown, Target, Ruler, Clock } from 'lucide-react';
 
 export function LivePrice() {
   const [price, setPrice] = useState(2.48);
   const [change, setChange] = useState(0.05);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  // Simulate live price updates (in production, fetch from CoinGecko or FTSO)
   useEffect(() => {
     const interval = setInterval(() => {
       const delta = (Math.random() - 0.5) * 0.02;
@@ -25,47 +25,63 @@ export function LivePrice() {
   const isPositive = change >= 0;
 
   return (
-    <div className="card card-glow">
+    <div className="card p-5">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        {/* XRP Price */}
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
               <span className="text-2xl">⟐</span>
             </div>
             <div>
-              <div className="text-sm text-[--text-secondary]">XRP/USD</div>
-              <div className="text-3xl font-bold price-ticker">
+              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground font-display block">
+                XRP/USD
+              </span>
+              <span className="text-3xl font-bold font-mono text-white tracking-tight">
                 ${price.toFixed(4)}
-              </div>
+              </span>
             </div>
           </div>
-          <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+          <div className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium font-mono ${
             isPositive
-              ? 'bg-[--accent-green]/20 text-[--accent-green]'
-              : 'bg-[--accent-red]/20 text-[--accent-red]'
+              ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+              : 'bg-red-500/10 text-red-400 border border-red-500/20'
           }`}>
-            {isPositive ? '↑' : '↓'} {Math.abs(change * 100).toFixed(2)}%
+            {isPositive ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+            {Math.abs(change * 100).toFixed(2)}%
           </div>
         </div>
 
-        {/* Market Target */}
         <div className="flex items-center gap-6">
           <div className="text-center">
-            <div className="text-sm text-[--text-secondary]">Target Price</div>
-            <div className="text-2xl font-bold text-[--accent-orange]">$3.00</div>
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <Target className="w-3 h-3 text-muted-foreground" />
+              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground font-display">
+                Target
+              </span>
+            </div>
+            <span className="text-2xl font-bold font-mono text-primary">$3.00</span>
           </div>
           <div className="text-center">
-            <div className="text-sm text-[--text-secondary]">Distance</div>
-            <div className="text-2xl font-bold">
-              {((3.00 - price) / price * 100).toFixed(1)}%
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <Ruler className="w-3 h-3 text-muted-foreground" />
+              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground font-display">
+                Distance
+              </span>
             </div>
+            <span className="text-2xl font-bold font-mono text-white">
+              {((3.00 - price) / price * 100).toFixed(1)}%
+            </span>
           </div>
           <div className="text-center hidden sm:block">
-            <div className="text-sm text-[--text-secondary]">Updated</div>
-            <div className="text-lg font-medium text-[--text-secondary]">
-              {lastUpdate.toLocaleTimeString()}
+            <div className="flex items-center justify-center gap-1 mb-1">
+              <Clock className="w-3 h-3 text-muted-foreground" />
+              <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground font-display">
+                Updated
+              </span>
             </div>
+            <span className="text-lg font-medium font-mono text-muted-foreground">
+              {lastUpdate.toLocaleTimeString()}
+            </span>
           </div>
         </div>
       </div>

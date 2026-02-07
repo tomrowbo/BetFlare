@@ -4,12 +4,12 @@ import { useEffect, useState } from 'react';
 import { usePublicClient } from 'wagmi';
 import { formatUnits, decodeAbiParameters, parseAbiParameters } from 'viem';
 import { FPMM_ABI } from '@/config/contracts';
+import { Activity } from 'lucide-react';
 
-// Buy event topic: keccak256('Buy(address,bool,uint256,uint256)')
 const BUY_EVENT_TOPIC = '0xe417997ad0a1c7dd102d3158fdf23af437ae25ed1926b1b069dc8e436fd16fb6';
 
 interface PriceChartProps {
-  yesPrice: number; // Current YES price (0-1)
+  yesPrice: number;
   fpmmAddress: string;
 }
 
@@ -28,13 +28,11 @@ export function PriceChart({ yesPrice, fpmmAddress }: PriceChartProps) {
       if (!publicClient) return;
 
       try {
-        // Fetch events from Coston2 explorer API (more reliable than RPC for historical logs)
         const response = await fetch(
           `https://coston2-explorer.flare.network/api/v2/addresses/${fpmmAddress}/logs`
         );
         const data = await response.json();
 
-        // Filter for Buy events (topic: 0xe417997ad0a1c7dd102d3158fdf23af437ae25ed1926b1b069dc8e436fd16fb6)
         const buyLogs = (data.items || []).filter(
           (log: { topics: string[] }) => log.topics[0] === BUY_EVENT_TOPIC
         );
@@ -53,8 +51,7 @@ export function PriceChart({ yesPrice, fpmmAddress }: PriceChartProps) {
 
           let cumulativeYesBias = 0;
 
-          for (const log of buyLogs.reverse()) { // reverse to get chronological order
-            // Decode the data: bool isYes, uint256 investmentAmount, uint256 tokensReceived
+          for (const log of buyLogs.reverse()) {
             const decoded = decodeAbiParameters(
               parseAbiParameters('bool isYes, uint256 investmentAmount, uint256 tokensReceived'),
               log.data as `0x${string}`
@@ -65,12 +62,11 @@ export function PriceChart({ yesPrice, fpmmAddress }: PriceChartProps) {
             const amount = Number(formatUnits(investmentAmount, 6));
 
             cumulativeYesBias += isYes ? amount : -amount;
-            const normalizedPrice = 0.5 + (cumulativeYesBias / 10) * 0.4; // Adjusted scaling
+            const normalizedPrice = 0.5 + (cumulativeYesBias / 10) * 0.4;
             const clampedPrice = Math.max(0.1, Math.min(0.9, normalizedPrice));
 
-            // Use block number to estimate timestamp
             prices.push({
-              timestamp: Date.now() - (buyLogs.length - prices.length) * 60000, // Spread out timestamps
+              timestamp: Date.now() - (buyLogs.length - prices.length) * 60000,
               price: clampedPrice,
             });
           }
@@ -80,7 +76,6 @@ export function PriceChart({ yesPrice, fpmmAddress }: PriceChartProps) {
         }
       } catch (error) {
         console.error('Error fetching events:', error);
-        // Fallback to simulated data
         setPriceHistory([
           { timestamp: Date.now() - 86400000, price: 0.5 },
           { timestamp: Date.now(), price: yesPrice },
@@ -99,7 +94,6 @@ export function PriceChart({ yesPrice, fpmmAddress }: PriceChartProps) {
   const chartWidth = width - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
-  // Use price history or generate points
   const data = priceHistory.length >= 2
     ? priceHistory.map(p => p.price)
     : Array(24).fill(0).map((_, i) => {
@@ -107,40 +101,42 @@ export function PriceChart({ yesPrice, fpmmAddress }: PriceChartProps) {
         return 0.5 + (yesPrice - 0.5) * (i / 23) + (Math.random() - 0.5) * 0.05;
       });
 
-  // Scale functions
   const xScale = (i: number) => padding.left + (i / (data.length - 1)) * chartWidth;
   const yScale = (v: number) => padding.top + (1 - v) * chartHeight;
 
-  // Create path
   const linePath = data
     .map((v, i) => `${i === 0 ? 'M' : 'L'} ${xScale(i)} ${yScale(v)}`)
     .join(' ');
 
-  // Create area path
   const areaPath = `${linePath} L ${xScale(data.length - 1)} ${yScale(0)} L ${xScale(0)} ${yScale(0)} Z`;
 
-  // Y-axis labels
   const yLabels = [0, 0.25, 0.5, 0.75, 1];
 
   const hasRealData = priceHistory.length > 2;
 
   return (
-    <div className="chart-container">
-      <div className="flex items-center justify-between mb-2">
+    <div className="bg-white/[0.02] border border-white/5 rounded-lg p-4">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-[--text-secondary]">Price History</span>
+          <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground font-display">
+            Price History
+          </span>
           {loading ? (
-            <span className="text-xs text-[--text-muted]">Loading...</span>
+            <span className="text-[10px] text-muted-foreground animate-pulse">Loading...</span>
           ) : hasRealData ? (
-            <span className="text-xs text-[--accent-green] bg-green-50 px-1.5 py-0.5 rounded">Live Data</span>
+            <span className="text-[10px] text-green-400 bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 font-bold uppercase tracking-wider">
+              Live
+            </span>
           ) : (
-            <span className="text-xs text-[--text-muted] bg-gray-100 px-1.5 py-0.5 rounded">Demo</span>
+            <span className="text-[10px] text-muted-foreground bg-white/5 border border-white/10 px-1.5 py-0.5 font-bold uppercase tracking-wider">
+              Demo
+            </span>
           )}
         </div>
-        <span className="text-sm font-bold text-[--accent-green]">{(yesPrice * 100).toFixed(0)}%</span>
+        <span className="text-sm font-bold font-mono text-primary">{(yesPrice * 100).toFixed(0)}%</span>
       </div>
       <svg width="100%" viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
-        {/* Grid lines */}
         {yLabels.map((label) => (
           <g key={label}>
             <line
@@ -148,7 +144,7 @@ export function PriceChart({ yesPrice, fpmmAddress }: PriceChartProps) {
               y1={yScale(label)}
               x2={width - padding.right}
               y2={yScale(label)}
-              stroke="#e5e7eb"
+              stroke="rgba(255,255,255,0.06)"
               strokeDasharray="2,2"
             />
             <text
@@ -156,62 +152,57 @@ export function PriceChart({ yesPrice, fpmmAddress }: PriceChartProps) {
               y={yScale(label)}
               textAnchor="end"
               dominantBaseline="middle"
-              className="text-[10px] fill-[--text-muted]"
+              className="text-[10px]"
+              fill="rgba(255,255,255,0.3)"
             >
               {(label * 100).toFixed(0)}%
             </text>
           </g>
         ))}
 
-        {/* Area fill */}
         <path
           d={areaPath}
-          fill="url(#gradient)"
+          fill="url(#chartGradient)"
           opacity={0.3}
         />
 
-        {/* Line */}
         <path
           d={linePath}
           fill="none"
-          stroke="#22c55e"
+          stroke="hsl(26 85% 54%)"
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
 
-        {/* Data points for real data */}
         {hasRealData && data.map((v, i) => (
           <circle
             key={i}
             cx={xScale(i)}
             cy={yScale(v)}
             r={i === data.length - 1 ? 4 : 2}
-            fill="#22c55e"
+            fill="hsl(26 85% 54%)"
           />
         ))}
 
-        {/* Current price dot */}
         {!hasRealData && (
           <circle
             cx={xScale(data.length - 1)}
             cy={yScale(yesPrice)}
             r={4}
-            fill="#22c55e"
+            fill="hsl(26 85% 54%)"
           />
         )}
 
-        {/* Gradient definition */}
         <defs>
-          <linearGradient id="gradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#22c55e" />
-            <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+          <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="hsl(26 85% 54%)" />
+            <stop offset="100%" stopColor="hsl(26 85% 54%)" stopOpacity={0} />
           </linearGradient>
         </defs>
       </svg>
 
-      {/* Time labels */}
-      <div className="flex justify-between mt-1 text-[10px] text-[--text-muted]">
+      <div className="flex justify-between mt-1 text-[10px] uppercase tracking-[0.15em] font-bold text-muted-foreground font-display">
         <span>Start</span>
         <span>Now</span>
       </div>
