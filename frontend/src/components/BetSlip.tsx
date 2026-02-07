@@ -1,12 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { useAccount, useReadContract, useWriteContract, usePublicClient } from 'wagmi';
+import { useReadContract, usePublicClient } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
 import { CONTRACTS, FPMM_ABI, ERC20_ABI } from '@/config/contracts';
 import { BetSlipSkeleton } from './Skeleton';
 import { cn } from '@/lib/utils';
-import { Lock, Clock, ExternalLink, Wallet } from 'lucide-react';
+import { Lock, Clock, ExternalLink, Wallet, Sparkles } from 'lucide-react';
+import { useWallet } from '@/contexts/WalletContext';
+import { useSmartTransaction, TransactionRequest } from '@/hooks/useSmartTransaction';
 
 interface BetSlipProps {
   side: 'yes' | 'no';
@@ -20,23 +22,23 @@ interface BetSlipProps {
 export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastResolution = false, onTradeSuccess }: BetSlipProps) {
   const [amount, setAmount] = useState('');
   const [txSuccess, setTxSuccess] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processingStep, setProcessingStep] = useState<'idle' | 'approving' | 'buying'>('idle');
-  const { address } = useAccount();
+  const [processingStep, setProcessingStep] = useState<'idle' | 'approving' | 'buying' | 'batching'>('idle');
+  const { address, isSmartAccount } = useWallet();
   const publicClient = usePublicClient();
+  const { execute, isLoading: isProcessing } = useSmartTransaction();
 
   const { data: usdtBalance, refetch: refetchBalance, isLoading: isLoadingBalance } = useReadContract({
     address: CONTRACTS.usdt as `0x${string}`,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
-    args: address ? [address] : undefined,
+    args: address ? [address as `0x${string}`] : undefined,
   });
 
   const { data: allowance, refetch: refetchAllowance, isLoading: isLoadingAllowance } = useReadContract({
     address: CONTRACTS.usdt as `0x${string}`,
     abi: ERC20_ABI,
     functionName: 'allowance',
-    args: address ? [address, fpmmAddress as `0x${string}`] : undefined,
+    args: address ? [address as `0x${string}`, fpmmAddress as `0x${string}`] : undefined,
   });
 
   const isInitialLoading = address && (isLoadingBalance || isLoadingAllowance);
@@ -48,8 +50,6 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
     args: amount && parseFloat(amount) > 0 ? [parseUnits(amount, 6)] : undefined,
   });
 
-  const { writeContractAsync } = useWriteContract();
-
   const formattedBalance = usdtBalance ? formatUnits(usdtBalance as bigint, 6) : '0';
   const formattedExpected = expectedTokens ? formatUnits(expectedTokens as bigint, 6) : '0';
   const needsApproval = amount && parseFloat(amount) > 0 && allowance !== undefined &&
@@ -59,35 +59,45 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
   const avgPrice = Number(amount) > 0 ? (Number(amount) / Number(formattedExpected)).toFixed(2) : '0';
 
   const handleBuy = async () => {
-    if (!amount || parseFloat(amount) <= 0 || !publicClient) return;
-
-    setIsProcessing(true);
+    if (!amount || parseFloat(amount) <= 0) return;
 
     try {
+      // Build transaction list
+      const transactions: TransactionRequest[] = [];
+
+      // Add approval if needed
       if (needsApproval) {
-        setProcessingStep('approving');
-        const approveHash = await writeContractAsync({
+        transactions.push({
           address: CONTRACTS.usdt as `0x${string}`,
           abi: ERC20_ABI,
           functionName: 'approve',
           args: [fpmmAddress as `0x${string}`, parseUnits('1000000', 6)],
         });
-        await publicClient.waitForTransactionReceipt({ hash: approveHash });
-        await refetchAllowance();
       }
 
-      setProcessingStep('buying');
-      const buyHash = await writeContractAsync({
+      // Add buy transaction
+      transactions.push({
         address: fpmmAddress as `0x${string}`,
         abi: FPMM_ABI,
         functionName: side === 'yes' ? 'buyYes' : 'buyNo',
         args: [parseUnits(amount, 6)],
       });
 
-      await publicClient.waitForTransactionReceipt({ hash: buyHash });
+      // Update processing step based on wallet type
+      if (isSmartAccount) {
+        setProcessingStep('batching');
+      } else if (needsApproval) {
+        setProcessingStep('approving');
+      } else {
+        setProcessingStep('buying');
+      }
 
-      setTxSuccess(buyHash);
+      // Execute (batched for smart account, sequential for EOA)
+      const txHash = await execute(transactions);
+
+      setTxSuccess(txHash);
       refetchBalance();
+      refetchAllowance();
       setAmount('');
       if (onTradeSuccess) {
         onTradeSuccess();
@@ -96,12 +106,17 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
     } catch (error) {
       console.error('Transaction failed:', error);
     } finally {
-      setIsProcessing(false);
       setProcessingStep('idle');
     }
   };
 
   const getButtonText = () => {
+    if (isSmartAccount) {
+      if (processingStep === 'batching') return 'Processing (Gasless)...';
+      if (needsApproval) return `Buy ${side.toUpperCase()} (Gasless)`;
+      return `Buy ${side.toUpperCase()} (Gasless)`;
+    }
+    // EOA flow
     if (processingStep === 'approving') return 'Approving...';
     if (processingStep === 'buying') return 'Buying...';
     if (needsApproval) return `Approve & Buy ${side.toUpperCase()}`;
@@ -149,9 +164,17 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
   return (
     <div className="card p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold font-display uppercase tracking-tight text-white">
-          Buy {side.toUpperCase()}
-        </h3>
+        <div className="flex items-center gap-2">
+          <h3 className="text-lg font-bold font-display uppercase tracking-tight text-white">
+            Buy {side.toUpperCase()}
+          </h3>
+          {isSmartAccount && (
+            <span className="flex items-center gap-1 px-2 py-0.5 text-[8px] uppercase tracking-wider bg-primary/10 text-primary border border-primary/20 rounded">
+              <Sparkles className="w-2.5 h-2.5" />
+              Gasless
+            </span>
+          )}
+        </div>
         <span className={cn(
           "px-2.5 py-1 text-[10px] uppercase tracking-[0.15em] font-bold font-display border",
           side === 'yes'
@@ -233,6 +256,12 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
               ${Number(formattedExpected).toFixed(2)} (+{potentialProfit > 0 ? potentialProfit.toFixed(2) : '0.00'})
             </span>
           </div>
+          {isSmartAccount && needsApproval && (
+            <div className="flex items-center gap-2 pt-2 border-t border-white/5 text-xs text-primary">
+              <Sparkles className="w-3 h-3" />
+              <span>Approve & buy in one click (no gas needed)</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -246,10 +275,11 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
           onClick={handleBuy}
           disabled={!amount || parseFloat(amount) <= 0 || isProcessing}
           className={cn(
-            "btn w-full py-3 font-display uppercase tracking-wide",
+            "btn w-full py-3 font-display uppercase tracking-wide inline-flex items-center justify-center gap-2",
             side === 'yes' ? "btn-yes active" : "btn-no active"
           )}
         >
+          {isSmartAccount && <Sparkles className="w-4 h-4" />}
           {getButtonText()}
         </button>
       )}

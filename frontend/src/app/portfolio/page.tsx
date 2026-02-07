@@ -1,9 +1,9 @@
 'use client';
 
-import { useAccount, useReadContracts, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useReadContracts } from 'wagmi';
 import { formatUnits } from 'viem';
 import { motion } from 'framer-motion';
-import { Zap, Clock, Gift, CheckCircle2, TrendingUp, TrendingDown, Wallet, BarChart3 } from 'lucide-react';
+import { Zap, Clock, Gift, CheckCircle2, TrendingUp, TrendingDown, Wallet, BarChart3, Sparkles } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { PageContainer } from '@/components/PageContainer';
 import { PositionCard, MarketPosition } from '@/components/portfolio/PositionCard';
@@ -12,13 +12,16 @@ import { CONTRACTS, MARKETS, Market, FPMM_ABI, CONDITIONAL_TOKENS_ABI, FTSO_RESO
 import { PositionCardSkeleton, StatsCardSkeleton, Skeleton } from '@/components/Skeleton';
 import { useState, useMemo, useEffect } from 'react';
 import Link from 'next/link';
+import { useWallet } from '@/contexts/WalletContext';
+import { useSmartTransaction } from '@/hooks/useSmartTransaction';
 
 export default function PortfolioPage() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, isSmartAccount } = useWallet();
   const [resolvingMarketId, setResolvingMarketId] = useState<string | null>(null);
   const [redeemingMarketId, setRedeemingMarketId] = useState<string | null>(null);
   const [redeemedHistory, setRedeemedHistory] = useState<RedeemedPosition[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const { execute, isLoading: isProcessing } = useSmartTransaction();
 
   const marketContracts = useMemo(() => {
     if (!address) return [];
@@ -224,35 +227,40 @@ export default function PortfolioPage() {
     return { yesValue, noValue, totalValue: yesValue + noValue, totalRedeemed };
   }, [positions, redeemedHistory]);
 
-  const { writeContract: writeResolve, data: resolveTxHash } = useWriteContract();
-  const { isLoading: isConfirmingResolve } = useWaitForTransactionReceipt({
-    hash: resolveTxHash,
-  });
-
-  const { writeContract: writeRedeem, data: redeemTxHash } = useWriteContract();
-  const { isLoading: isConfirmingRedeem } = useWaitForTransactionReceipt({
-    hash: redeemTxHash,
-  });
-
-  const handleResolve = (market: Market) => {
+  const handleResolve = async (market: Market) => {
     setResolvingMarketId(market.marketId);
-    writeResolve({
-      address: market.resolver as `0x${string}`,
-      abi: FTSO_RESOLVER_ABI,
-      functionName: 'resolve',
-      args: [market.marketId as `0x${string}`],
-    });
+    try {
+      await execute([{
+        address: market.resolver as `0x${string}`,
+        abi: FTSO_RESOLVER_ABI,
+        functionName: 'resolve',
+        args: [market.marketId as `0x${string}`],
+      }]);
+    } catch (error) {
+      console.error('Resolve failed:', error);
+    } finally {
+      setResolvingMarketId(null);
+    }
   };
 
-  const handleRedeem = (market: Market) => {
+  const handleRedeem = async (market: Market) => {
     setRedeemingMarketId(market.marketId);
-    writeRedeem({
-      address: CONTRACTS.conditionalTokens as `0x${string}`,
-      abi: CONDITIONAL_TOKENS_ABI,
-      functionName: 'redeemPositions',
-      args: [market.conditionId as `0x${string}`],
-    });
+    try {
+      await execute([{
+        address: CONTRACTS.conditionalTokens as `0x${string}`,
+        abi: CONDITIONAL_TOKENS_ABI,
+        functionName: 'redeemPositions',
+        args: [market.conditionId as `0x${string}`],
+      }]);
+    } catch (error) {
+      console.error('Redeem failed:', error);
+    } finally {
+      setRedeemingMarketId(null);
+    }
   };
+
+  const isConfirmingResolve = isProcessing && resolvingMarketId !== null;
+  const isConfirmingRedeem = isProcessing && redeemingMarketId !== null;
 
   const hasPositions = positions.length > 0;
 

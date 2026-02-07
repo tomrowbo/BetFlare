@@ -1,8 +1,8 @@
 'use client';
 
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useReadContract } from 'wagmi';
 import { useQueryClient } from '@tanstack/react-query';
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Header } from '@/components/Header';
@@ -11,17 +11,21 @@ import { MarketCard } from '@/components/MarketCard';
 import { BetSlip } from '@/components/BetSlip';
 import { PositionView } from '@/components/PositionView';
 import { getMarketBySlug, FPMM_ABI, CONTRACTS, CONDITIONAL_TOKENS_ABI, FTSO_RESOLVER_ABI } from '@/config/contracts';
-import { MarketCardSkeleton, BetSlipSkeleton, PositionCardSkeleton } from '@/components/Skeleton';
 import { formatUnits } from 'viem';
-import { ArrowLeft, CheckCircle2, XCircle, Clock, Zap } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, Clock, Zap, Sparkles } from 'lucide-react';
+import { useWallet } from '@/contexts/WalletContext';
+import { useSmartTransaction } from '@/hooks/useSmartTransaction';
 
 export default function MarketPage() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, isSmartAccount } = useWallet();
   const [selectedSide, setSelectedSide] = useState<'yes' | 'no'>('yes');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [isResolving, setIsResolving] = useState(false);
+  const [isRedeeming, setIsRedeeming] = useState(false);
   const queryClient = useQueryClient();
   const params = useParams();
   const slug = params.slug as string;
+  const { execute, isLoading: isProcessing } = useSmartTransaction();
 
   const market = getMarketBySlug(slug);
 
@@ -59,28 +63,16 @@ export default function MarketPage() {
     address: CONTRACTS.conditionalTokens as `0x${string}`,
     abi: CONDITIONAL_TOKENS_ABI,
     functionName: 'balanceOf',
-    args: address && yesPositionId ? [address, yesPositionId as bigint] : undefined,
+    args: address && yesPositionId ? [address as `0x${string}`, yesPositionId as bigint] : undefined,
   });
 
   const { data: noBalance } = useReadContract({
     address: CONTRACTS.conditionalTokens as `0x${string}`,
     abi: CONDITIONAL_TOKENS_ABI,
     functionName: 'balanceOf',
-    args: address && noPositionId ? [address, noPositionId as bigint] : undefined,
+    args: address && noPositionId ? [address as `0x${string}`, noPositionId as bigint] : undefined,
   });
 
-  const { writeContract: writeResolve, data: resolveTxHash } = useWriteContract();
-  const { isLoading: isResolving, isSuccess: resolveSuccess } = useWaitForTransactionReceipt({ hash: resolveTxHash });
-
-  const { writeContract: writeRedeem, data: redeemTxHash } = useWriteContract();
-  const { isLoading: isRedeeming, isSuccess: redeemSuccess } = useWaitForTransactionReceipt({ hash: redeemTxHash });
-
-  useEffect(() => {
-    if (resolveSuccess || redeemSuccess) {
-      queryClient.invalidateQueries();
-      setRefreshKey(prev => prev + 1);
-    }
-  }, [resolveSuccess, redeemSuccess, queryClient]);
 
   if (!market) {
     return (
@@ -122,22 +114,40 @@ export default function MarketPage() {
     ? (yesWon ? userYesBalance : userNoBalance)
     : 0;
 
-  const handleResolve = () => {
-    writeResolve({
-      address: market.resolver as `0x${string}`,
-      abi: FTSO_RESOLVER_ABI,
-      functionName: 'resolve',
-      args: [market.marketId as `0x${string}`],
-    });
+  const handleResolve = async () => {
+    setIsResolving(true);
+    try {
+      await execute([{
+        address: market.resolver as `0x${string}`,
+        abi: FTSO_RESOLVER_ABI,
+        functionName: 'resolve',
+        args: [market.marketId as `0x${string}`],
+      }]);
+      queryClient.invalidateQueries();
+      setRefreshKey(prev => prev + 1);
+    } catch (error) {
+      console.error('Resolve failed:', error);
+    } finally {
+      setIsResolving(false);
+    }
   };
 
-  const handleRedeem = () => {
-    writeRedeem({
-      address: CONTRACTS.conditionalTokens as `0x${string}`,
-      abi: CONDITIONAL_TOKENS_ABI,
-      functionName: 'redeemPositions',
-      args: [market.conditionId as `0x${string}`],
-    });
+  const handleRedeem = async () => {
+    setIsRedeeming(true);
+    try {
+      await execute([{
+        address: CONTRACTS.conditionalTokens as `0x${string}`,
+        abi: CONDITIONAL_TOKENS_ABI,
+        functionName: 'redeemPositions',
+        args: [market.conditionId as `0x${string}`],
+      }]);
+      queryClient.invalidateQueries();
+      setRefreshKey(prev => prev + 1);
+    } catch (error) {
+      console.error('Redeem failed:', error);
+    } finally {
+      setIsRedeeming(false);
+    }
   };
 
   const resolutionDate = new Date(market.resolutionTime * 1000).toLocaleString();
@@ -186,9 +196,12 @@ export default function MarketPage() {
                 <button
                   onClick={handleRedeem}
                   disabled={isRedeeming}
-                  className="px-6 py-3 bg-green-500 text-white font-bold font-display uppercase tracking-wide rounded-lg hover:bg-green-500/80 transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-green-500 text-white font-bold font-display uppercase tracking-wide rounded-lg hover:bg-green-500/80 transition-colors disabled:opacity-50"
                 >
-                  {isRedeeming ? 'Redeeming...' : `Redeem $${redeemableAmount.toFixed(2)}`}
+                  {isSmartAccount && <Sparkles className="w-4 h-4" />}
+                  {isRedeeming
+                    ? (isSmartAccount ? 'Redeeming (Gasless)...' : 'Redeeming...')
+                    : (isSmartAccount ? `Redeem $${redeemableAmount.toFixed(2)} (Gasless)` : `Redeem $${redeemableAmount.toFixed(2)}`)}
                 </button>
               )}
             </div>
@@ -216,8 +229,10 @@ export default function MarketPage() {
                 disabled={isResolving}
                 className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white font-bold font-display uppercase tracking-wide rounded-lg hover:bg-primary/80 transition-colors disabled:opacity-50"
               >
-                <Zap className="w-4 h-4" />
-                {isResolving ? 'Resolving...' : 'Resolve Market'}
+                {isSmartAccount ? <Sparkles className="w-4 h-4" /> : <Zap className="w-4 h-4" />}
+                {isResolving
+                  ? (isSmartAccount ? 'Resolving (Gasless)...' : 'Resolving...')
+                  : (isSmartAccount ? 'Resolve Market (Gasless)' : 'Resolve Market')}
               </button>
             </div>
           </div>

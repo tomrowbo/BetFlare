@@ -1,13 +1,12 @@
 'use client';
 
-import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { useReadContract, useReadContracts, usePublicClient } from 'wagmi';
 import { useQueryClient } from '@tanstack/react-query';
 import { parseUnits, formatUnits } from 'viem';
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { motion } from 'framer-motion';
-import { Vault, TrendingUp, Percent, Coins, ArrowDownToLine, ArrowUpFromLine, Wallet, CheckCircle2, Info } from 'lucide-react';
+import { Vault, Percent, Coins, ArrowDownToLine, ArrowUpFromLine, Wallet, CheckCircle2, Info, Sparkles } from 'lucide-react';
 import { Header } from '@/components/Header';
 import { PageContainer } from '@/components/PageContainer';
 import { cn } from '@/lib/utils';
@@ -19,26 +18,31 @@ import {
   FPMM_ABI,
 } from '@/config/contracts';
 import { LiquidityPageSkeleton } from '@/components/Skeleton';
+import { useWallet } from '@/contexts/WalletContext';
+import { useSmartTransaction, TransactionRequest } from '@/hooks/useSmartTransaction';
+import { ConnectWalletButton } from '@/components/ConnectWalletButton';
 
 export default function LiquidityPage() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, isSmartAccount } = useWallet();
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [txSuccess, setTxSuccess] = useState(false);
   const queryClient = useQueryClient();
+  const { execute, isLoading: isProcessing } = useSmartTransaction();
 
   const { data: usdtBalance } = useReadContract({
     address: CONTRACTS.usdt as `0x${string}`,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
-    args: address ? [address] : undefined,
+    args: address ? [address as `0x${string}`] : undefined,
   });
 
   const { data: shareBalance } = useReadContract({
     address: CONTRACTS.universalVault as `0x${string}`,
     abi: UNIVERSAL_VAULT_ABI,
     functionName: 'balanceOf',
-    args: address ? [address] : undefined,
+    args: address ? [address as `0x${string}`] : undefined,
   });
 
   const { data: shareValue } = useReadContract({
@@ -81,18 +85,8 @@ export default function LiquidityPage() {
     address: CONTRACTS.usdt as `0x${string}`,
     abi: ERC20_ABI,
     functionName: 'allowance',
-    args: address ? [address, CONTRACTS.universalVault as `0x${string}`] : undefined,
+    args: address ? [address as `0x${string}`, CONTRACTS.universalVault as `0x${string}`] : undefined,
   });
-
-  const { writeContractAsync: approveAsync } = useWriteContract();
-  const { writeContract: deposit, data: depositHash } = useWriteContract();
-  const { writeContract: withdraw, data: withdrawHash } = useWriteContract();
-
-  const [isApproving, setIsApproving] = useState(false);
-  const { isLoading: isDepositing, isSuccess: depositSuccess } = useWaitForTransactionReceipt({ hash: depositHash });
-  const { isLoading: isWithdrawing, isSuccess: withdrawSuccess } = useWaitForTransactionReceipt({ hash: withdrawHash });
-
-  const publicClient = usePublicClient();
 
   const formattedUsdtBalance = usdtBalance ? formatUnits(usdtBalance as bigint, 6) : '0';
   const formattedShareValue = shareValue ? formatUnits(shareValue as bigint, 6) : '0';
@@ -207,7 +201,7 @@ export default function LiquidityPage() {
     }
 
     fetchUserHistory();
-  }, [address, formattedShareValue, depositSuccess, withdrawSuccess]);
+  }, [address, formattedShareValue, txSuccess]);
 
   const marketLiquidity = useMemo(() => {
     if (!marketLiquidityData) return 0;
@@ -233,55 +227,59 @@ export default function LiquidityPage() {
   const handleDeposit = async () => {
     if (!amount || !address) return;
 
-    const depositAmount = parseUnits(amount, 6);
+    try {
+      const transactions: TransactionRequest[] = [];
 
-    if (needsApproval) {
-      setIsApproving(true);
-      try {
-        const hash = await approveAsync({
+      // Add approval if needed
+      if (needsApproval) {
+        transactions.push({
           address: CONTRACTS.usdt as `0x${string}`,
           abi: ERC20_ABI,
           functionName: 'approve',
           args: [CONTRACTS.universalVault as `0x${string}`, parseUnits('1000000', 6)],
         });
-
-        await publicClient?.waitForTransactionReceipt({ hash });
-        await refetchAllowance();
-      } catch (err) {
-        console.error('Approval failed:', err);
-        setIsApproving(false);
-        return;
       }
-      setIsApproving(false);
+
+      // Add deposit transaction
+      transactions.push({
+        address: CONTRACTS.universalVault as `0x${string}`,
+        abi: UNIVERSAL_VAULT_ABI,
+        functionName: 'deposit',
+        args: [parseUnits(amount, 6), address as `0x${string}`],
+      });
+
+      await execute(transactions);
+      setTxSuccess(true);
+      queryClient.invalidateQueries();
+      refetchAllowance();
+      setRefreshKey(prev => prev + 1);
+      setAmount('');
+      setTimeout(() => setTxSuccess(false), 5000);
+    } catch (error) {
+      console.error('Deposit failed:', error);
     }
-
-    deposit({
-      address: CONTRACTS.universalVault as `0x${string}`,
-      abi: UNIVERSAL_VAULT_ABI,
-      functionName: 'deposit',
-      args: [depositAmount, address],
-    });
   };
 
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     if (!amount || !address) return;
-    withdraw({
-      address: CONTRACTS.universalVault as `0x${string}`,
-      abi: UNIVERSAL_VAULT_ABI,
-      functionName: 'withdraw',
-      args: [parseUnits(amount, 6), address, address],
-    });
-  };
 
-  const isLoading = isApproving || isDepositing || isWithdrawing;
-
-  useEffect(() => {
-    if (depositSuccess || withdrawSuccess) {
+    try {
+      await execute([{
+        address: CONTRACTS.universalVault as `0x${string}`,
+        abi: UNIVERSAL_VAULT_ABI,
+        functionName: 'withdraw',
+        args: [parseUnits(amount, 6), address as `0x${string}`, address as `0x${string}`],
+      }]);
+      setTxSuccess(true);
       queryClient.invalidateQueries();
       setRefreshKey(prev => prev + 1);
       setAmount('');
+      setTimeout(() => setTxSuccess(false), 5000);
+    } catch (error) {
+      console.error('Withdraw failed:', error);
     }
-  }, [depositSuccess, withdrawSuccess, queryClient]);
+  };
+
 
   if (isLoadingVaultStats) {
     return (
@@ -469,41 +467,30 @@ export default function LiquidityPage() {
           </div>
 
           {!isConnected ? (
-            <ConnectButton.Custom>
-              {({ openConnectModal }) => (
-                <button
-                  onClick={openConnectModal}
-                  className="w-full flex items-center justify-center gap-2 py-4 rounded-lg border border-white/10 bg-white/[0.03] text-white/60 font-display font-bold text-sm uppercase tracking-wide hover:border-primary/30 hover:text-white transition-all"
-                >
-                  <Wallet className="w-4 h-4" />
-                  Connect Wallet
-                </button>
-              )}
-            </ConnectButton.Custom>
+            <div className="w-full flex justify-center">
+              <ConnectWalletButton />
+            </div>
           ) : (
             <button
               onClick={mode === 'deposit' ? handleDeposit : handleWithdraw}
-              disabled={!amount || isLoading}
+              disabled={!amount || isProcessing}
               className={cn(
-                "w-full py-4 rounded-lg font-display font-bold text-sm uppercase tracking-wide transition-all disabled:opacity-40 disabled:cursor-not-allowed",
+                "w-full py-4 rounded-lg font-display font-bold text-sm uppercase tracking-wide transition-all disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2",
                 mode === 'deposit'
                   ? 'bg-green-500 text-white hover:bg-green-500/80 shadow-[0_0_25px_rgba(34,197,94,0.15)]'
                   : 'bg-red-500 text-white hover:bg-red-500/80 shadow-[0_0_25px_rgba(239,68,68,0.15)]'
               )}
             >
-              {isApproving
-                ? 'Approving...'
-                : isDepositing
-                ? 'Depositing...'
-                : isWithdrawing
-                ? 'Withdrawing...'
+              {isSmartAccount && <Sparkles className="w-4 h-4" />}
+              {isProcessing
+                ? (isSmartAccount ? 'Processing (Gasless)...' : 'Processing...')
                 : mode === 'deposit'
-                ? 'Deposit'
-                : 'Withdraw'}
+                ? (isSmartAccount ? 'Deposit (Gasless)' : 'Deposit')
+                : (isSmartAccount ? 'Withdraw (Gasless)' : 'Withdraw')}
             </button>
           )}
 
-          {(depositSuccess || withdrawSuccess) && (
+          {txSuccess && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}

@@ -1,24 +1,25 @@
 'use client';
 
-import { ConnectButton } from '@rainbow-me/rainbowkit';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useAccount, useReadContract } from 'wagmi';
+import { useReadContract } from 'wagmi';
 import { formatUnits } from 'viem';
-import { Wallet } from 'lucide-react';
+import { Wallet, Sparkles } from 'lucide-react';
 import { CONTRACTS, ERC20_ABI } from '@/config/contracts';
 import { cn } from '@/lib/utils';
+import { useWallet } from '@/contexts/WalletContext';
+import { ConnectWalletButton } from '@/components/ConnectWalletButton';
 
 export function Header() {
   const pathname = usePathname();
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, isSmartAccount } = useWallet();
 
   const { data: usdtBalance, isLoading: isLoadingBalance } = useReadContract({
     address: CONTRACTS.usdt as `0x${string}`,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
-    args: address ? [address] : undefined,
+    args: address ? [address as `0x${string}`] : undefined,
   });
 
   const formattedBalance = usdtBalance ? Number(formatUnits(usdtBalance as bigint, 6)).toFixed(2) : '0.00';
@@ -66,8 +67,17 @@ export function Header() {
 
         <div className="flex items-center gap-3">
           {isConnected && (
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 border border-white/5 bg-card/60 backdrop-blur-sm">
-              <Wallet className="w-3.5 h-3.5 text-white/30" />
+            <div className={cn(
+              'hidden sm:flex items-center gap-2 px-3 py-1.5 border backdrop-blur-sm',
+              isSmartAccount
+                ? 'border-primary/20 bg-primary/5'
+                : 'border-white/5 bg-card/60'
+            )}>
+              {isSmartAccount ? (
+                <Sparkles className="w-3.5 h-3.5 text-primary/60" />
+              ) : (
+                <Wallet className="w-3.5 h-3.5 text-white/30" />
+              )}
               <span className="text-[10px] uppercase tracking-[0.15em] font-bold text-white/40">
                 Balance
               </span>
@@ -81,24 +91,7 @@ export function Header() {
             </div>
           )}
 
-          <ConnectButton.Custom>
-            {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
-              const connected = mounted && account && chain;
-              return (
-                <button
-                  onClick={connected ? openAccountModal : openConnectModal}
-                  className={cn(
-                    'px-5 py-2 font-display font-semibold text-sm tracking-wide transition-all',
-                    connected
-                      ? 'border border-white/10 bg-card/60 text-white/80 hover:border-primary/30 hover:text-white'
-                      : 'bg-primary text-white hover:bg-primary/90 shadow-[0_0_15px_rgba(237,126,39,0.2)]'
-                  )}
-                >
-                  {connected ? account.displayName : 'Connect Wallet'}
-                </button>
-              );
-            }}
-          </ConnectButton.Custom>
+          <ConnectWalletButton />
         </div>
       </div>
     </header>
