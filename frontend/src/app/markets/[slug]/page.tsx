@@ -6,12 +6,14 @@ import { useState, useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Header } from '@/components/Header';
+import { PageContainer } from '@/components/PageContainer';
 import { MarketCard } from '@/components/MarketCard';
 import { BetSlip } from '@/components/BetSlip';
 import { PositionView } from '@/components/PositionView';
 import { getMarketBySlug, FPMM_ABI, CONTRACTS, CONDITIONAL_TOKENS_ABI, FTSO_RESOLVER_ABI } from '@/config/contracts';
 import { MarketCardSkeleton, BetSlipSkeleton, PositionCardSkeleton } from '@/components/Skeleton';
 import { formatUnits } from 'viem';
+import { ArrowLeft, CheckCircle2, XCircle, Clock, Zap } from 'lucide-react';
 
 export default function MarketPage() {
   const { address, isConnected } = useAccount();
@@ -23,22 +25,17 @@ export default function MarketPage() {
 
   const market = getMarketBySlug(slug);
 
-  // Callback to refresh all data after a trade
   const handleTradeSuccess = useCallback(() => {
-    // Invalidate all wagmi queries to refetch prices, balances, etc.
     queryClient.invalidateQueries();
-    // Also trigger a key change to force re-render
     setRefreshKey(prev => prev + 1);
   }, [queryClient]);
 
-  // Fetch market resolved status
   const { data: resolved } = useReadContract({
     address: market?.fpmm as `0x${string}`,
     abi: FPMM_ABI,
     functionName: 'resolved',
   });
 
-  // Fetch payout numerator to know who won
   const { data: yesPayoutNumerator } = useReadContract({
     address: CONTRACTS.conditionalTokens as `0x${string}`,
     abi: CONDITIONAL_TOKENS_ABI,
@@ -46,7 +43,6 @@ export default function MarketPage() {
     args: market ? [market.conditionId as `0x${string}`, BigInt(0)] : undefined,
   });
 
-  // Fetch user's position IDs
   const { data: yesPositionId } = useReadContract({
     address: market?.fpmm as `0x${string}`,
     abi: FPMM_ABI,
@@ -59,7 +55,6 @@ export default function MarketPage() {
     functionName: 'noPositionId',
   });
 
-  // Fetch user's balances
   const { data: yesBalance } = useReadContract({
     address: CONTRACTS.conditionalTokens as `0x${string}`,
     abi: CONDITIONAL_TOKENS_ABI,
@@ -74,17 +69,14 @@ export default function MarketPage() {
     args: address && noPositionId ? [address, noPositionId as bigint] : undefined,
   });
 
-  // Transaction handlers
   const { writeContract: writeResolve, data: resolveTxHash } = useWriteContract();
   const { isLoading: isResolving, isSuccess: resolveSuccess } = useWaitForTransactionReceipt({ hash: resolveTxHash });
 
   const { writeContract: writeRedeem, data: redeemTxHash } = useWriteContract();
   const { isLoading: isRedeeming, isSuccess: redeemSuccess } = useWaitForTransactionReceipt({ hash: redeemTxHash });
 
-  // Auto-refresh after resolve or redeem transactions succeed
   useEffect(() => {
     if (resolveSuccess || redeemSuccess) {
-      // Invalidate all queries to refetch resolved status, balances, etc.
       queryClient.invalidateQueries();
       setRefreshKey(prev => prev + 1);
     }
@@ -94,17 +86,24 @@ export default function MarketPage() {
     return (
       <main className="min-h-screen">
         <Header />
-        <div className="max-w-6xl mx-auto px-4 py-8">
-          <div className="card text-center py-12">
-            <h1 className="text-2xl font-bold mb-4">Market Not Found</h1>
-            <p className="text-[--text-secondary] mb-4">
+        <PageContainer maxWidth="xl">
+          <div className="card p-12 text-center">
+            <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-white/5 flex items-center justify-center">
+              <XCircle className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <h1 className="text-2xl font-bold font-display uppercase tracking-tight text-white mb-4">Market Not Found</h1>
+            <p className="text-muted-foreground mb-6">
               The market &quot;{slug}&quot; does not exist.
             </p>
-            <Link href="/" className="text-[--accent-blue] hover:underline">
-              ← Back to markets
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 text-primary hover:text-primary/80 transition-colors font-display font-medium uppercase text-sm tracking-wide"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Back to markets
             </Link>
           </div>
-        </div>
+        </PageContainer>
       </main>
     );
   }
@@ -114,7 +113,6 @@ export default function MarketPage() {
   const isResolved = resolved === true;
   const yesWon = isResolved && yesPayoutNumerator !== undefined ? yesPayoutNumerator === BigInt(1) : null;
 
-  // Calculate user's redeemable amount
   const userYesBalance = yesBalance ? Number(formatUnits(yesBalance as bigint, 6)) : 0;
   const userNoBalance = noBalance ? Number(formatUnits(noBalance as bigint, 6)) : 0;
   const hasWinningPosition = isResolved && yesWon !== null && (
@@ -148,31 +146,39 @@ export default function MarketPage() {
     <main className="min-h-screen">
       <Header />
 
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        {/* Breadcrumb */}
+      <PageContainer maxWidth="xl" className="py-6">
         <Link
           href="/"
-          className="text-sm text-[--accent-blue] hover:underline mb-4 inline-flex items-center gap-1"
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors mb-4 font-display font-medium uppercase tracking-wide"
         >
-          ← Back to markets
+          <ArrowLeft className="w-4 h-4" />
+          Back to markets
         </Link>
 
-        {/* Resolution Status Banner */}
         {isResolved && (
-          <div className={`mt-4 p-4 rounded-xl border-2 ${
+          <div className={`mt-4 p-5 rounded-lg border ${
             yesWon
-              ? 'bg-[--accent-green]/10 border-[--accent-green]/30'
-              : 'bg-[--accent-red]/10 border-[--accent-red]/30'
+              ? 'bg-green-500/5 border-green-500/20'
+              : 'bg-red-500/5 border-red-500/20'
           }`}>
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-3">
-                <span className="text-3xl">{yesWon ? '✅' : '❌'}</span>
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  yesWon ? 'bg-green-500/15' : 'bg-red-500/15'
+                }`}>
+                  {yesWon
+                    ? <CheckCircle2 className="w-5 h-5 text-green-400" />
+                    : <XCircle className="w-5 h-5 text-red-400" />
+                  }
+                </div>
                 <div>
-                  <div className={`text-xl font-bold ${yesWon ? 'text-[--accent-green]' : 'text-[--accent-red]'}`}>
+                  <div className={`text-xl font-bold font-display uppercase tracking-tight ${
+                    yesWon ? 'text-green-400' : 'text-red-400'
+                  }`}>
                     {yesWon ? 'YES' : 'NO'} Won
                   </div>
-                  <div className="text-sm text-[--text-secondary]">
-                    Market resolved • {market.title}
+                  <div className="text-sm text-muted-foreground">
+                    Market resolved · {market.title}
                   </div>
                 </div>
               </div>
@@ -180,7 +186,7 @@ export default function MarketPage() {
                 <button
                   onClick={handleRedeem}
                   disabled={isRedeeming}
-                  className="px-6 py-3 bg-[--accent-green] text-white font-bold rounded-xl hover:bg-[--accent-green]/80 transition disabled:opacity-50"
+                  className="px-6 py-3 bg-green-500 text-white font-bold font-display uppercase tracking-wide rounded-lg hover:bg-green-500/80 transition-colors disabled:opacity-50"
                 >
                   {isRedeeming ? 'Redeeming...' : `Redeem $${redeemableAmount.toFixed(2)}`}
                 </button>
@@ -189,33 +195,34 @@ export default function MarketPage() {
           </div>
         )}
 
-        {/* Awaiting Resolution Banner */}
         {isPastResolution && !isResolved && (
-          <div className="mt-4 p-4 rounded-xl border-2 bg-[--accent-orange]/10 border-[--accent-orange]/30">
+          <div className="mt-4 p-5 rounded-lg border bg-primary/5 border-primary/20">
             <div className="flex items-center justify-between flex-wrap gap-4">
               <div className="flex items-center gap-3">
-                <span className="text-3xl">⏳</span>
+                <div className="w-10 h-10 rounded-full bg-primary/15 flex items-center justify-center">
+                  <Clock className="w-5 h-5 text-primary" />
+                </div>
                 <div>
-                  <div className="text-xl font-bold text-[--accent-orange]">
+                  <div className="text-xl font-bold font-display uppercase tracking-tight text-primary">
                     Awaiting Resolution
                   </div>
-                  <div className="text-sm text-[--text-secondary]">
-                    Resolution time passed • Click to resolve using FTSO oracle
+                  <div className="text-sm text-muted-foreground">
+                    Resolution time passed · Click to resolve using FTSO oracle
                   </div>
                 </div>
               </div>
               <button
                 onClick={handleResolve}
                 disabled={isResolving}
-                className="px-6 py-3 bg-[--accent-orange] text-white font-bold rounded-xl hover:bg-[--accent-orange]/80 transition disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white font-bold font-display uppercase tracking-wide rounded-lg hover:bg-primary/80 transition-colors disabled:opacity-50"
               >
+                <Zap className="w-4 h-4" />
                 {isResolving ? 'Resolving...' : 'Resolve Market'}
               </button>
             </div>
           </div>
         )}
 
-        {/* Market Detail View */}
         <div className="grid lg:grid-cols-3 gap-6 mt-4">
           <div className="lg:col-span-2">
             <MarketCard
@@ -264,7 +271,7 @@ export default function MarketPage() {
             )}
           </div>
         </div>
-      </div>
+      </PageContainer>
     </main>
   );
 }

@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { useState } from 'react';
+import { useAccount, useReadContract, useWriteContract, usePublicClient } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
 import { CONTRACTS, FPMM_ABI, ERC20_ABI } from '@/config/contracts';
 import { BetSlipSkeleton } from './Skeleton';
+import { cn } from '@/lib/utils';
+import { Lock, Clock, ExternalLink, Wallet } from 'lucide-react';
 
 interface BetSlipProps {
   side: 'yes' | 'no';
@@ -37,7 +39,6 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
     args: address ? [address, fpmmAddress as `0x${string}`] : undefined,
   });
 
-  // Show skeleton if loading initial data and we have an address
   const isInitialLoading = address && (isLoadingBalance || isLoadingAllowance);
 
   const { data: expectedTokens } = useReadContract({
@@ -57,14 +58,12 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
   const potentialProfit = Number(formattedExpected) - Number(amount);
   const avgPrice = Number(amount) > 0 ? (Number(amount) / Number(formattedExpected)).toFixed(2) : '0';
 
-  // Single-click buy with approval if needed
   const handleBuy = async () => {
     if (!amount || parseFloat(amount) <= 0 || !publicClient) return;
 
     setIsProcessing(true);
 
     try {
-      // Step 1: Approve if needed
       if (needsApproval) {
         setProcessingStep('approving');
         const approveHash = await writeContractAsync({
@@ -73,12 +72,10 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
           functionName: 'approve',
           args: [fpmmAddress as `0x${string}`, parseUnits('1000000', 6)],
         });
-        // Wait for approval to be mined
         await publicClient.waitForTransactionReceipt({ hash: approveHash });
         await refetchAllowance();
       }
 
-      // Step 2: Execute buy
       setProcessingStep('buying');
       const buyHash = await writeContractAsync({
         address: fpmmAddress as `0x${string}`,
@@ -87,10 +84,8 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
         args: [parseUnits(amount, 6)],
       });
 
-      // Wait for buy to be mined
       await publicClient.waitForTransactionReceipt({ hash: buyHash });
 
-      // Success!
       setTxSuccess(buyHash);
       refetchBalance();
       setAmount('');
@@ -115,19 +110,19 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
 
   const quickAmounts = ['1', '5', '10', '25'];
 
-  // Show skeleton while loading initial data
   if (isInitialLoading) {
     return <BetSlipSkeleton />;
   }
 
-  // Show resolved message if market is resolved
   if (resolved) {
     return (
-      <div className="card">
+      <div className="card p-6">
         <div className="text-center py-6">
-          <div className="text-4xl mb-3">🔒</div>
-          <h3 className="text-lg font-bold mb-2">Market Resolved</h3>
-          <p className="text-sm text-[--text-secondary]">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-white/5 flex items-center justify-center">
+            <Lock className="w-6 h-6 text-muted-foreground" />
+          </div>
+          <h3 className="text-lg font-bold font-display uppercase tracking-tight text-white mb-2">Market Resolved</h3>
+          <p className="text-sm text-muted-foreground">
             Trading has ended. Check your positions below to redeem winnings.
           </p>
         </div>
@@ -135,14 +130,15 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
     );
   }
 
-  // Show awaiting resolution message if past resolution time
   if (isPastResolution) {
     return (
-      <div className="card">
+      <div className="card p-6">
         <div className="text-center py-6">
-          <div className="text-4xl mb-3">⏳</div>
-          <h3 className="text-lg font-bold mb-2 text-[--accent-orange]">Trading Closed</h3>
-          <p className="text-sm text-[--text-secondary]">
+          <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+            <Clock className="w-6 h-6 text-primary" />
+          </div>
+          <h3 className="text-lg font-bold font-display uppercase tracking-tight text-primary mb-2">Trading Closed</h3>
+          <p className="text-sm text-muted-foreground">
             Resolution time has passed. Click &quot;Resolve Market&quot; above to trigger the FTSO oracle and settle the market.
           </p>
         </div>
@@ -151,53 +147,56 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
   }
 
   return (
-    <div className="card">
+    <div className="card p-6">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold">Buy {side.toUpperCase()}</h3>
-        <div className={`px-2 py-1 rounded text-xs font-bold ${
+        <h3 className="text-lg font-bold font-display uppercase tracking-tight text-white">
+          Buy {side.toUpperCase()}
+        </h3>
+        <span className={cn(
+          "px-2.5 py-1 text-[10px] uppercase tracking-[0.15em] font-bold font-display border",
           side === 'yes'
-            ? 'bg-green-100 text-green-800'
-            : 'bg-red-100 text-red-800'
-        }`}>
+            ? "bg-green-500/10 text-green-400 border-green-500/20"
+            : "bg-red-500/10 text-red-400 border-red-500/20"
+        )}>
           {side.toUpperCase()}
-        </div>
+        </span>
       </div>
 
-      {/* Success Message */}
       {txSuccess && (
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
-          <div className="text-green-800 font-semibold text-sm mb-1">Order filled!</div>
+        <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3 mb-4">
+          <div className="text-green-400 font-semibold text-sm mb-1 font-display">Order filled!</div>
           <a
             href={`https://coston2-explorer.flare.network/tx/${txSuccess}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-[--accent-blue] hover:underline"
+            className="text-xs text-primary hover:text-primary/80 transition-colors inline-flex items-center gap-1"
           >
-            View transaction →
+            View transaction <ExternalLink className="w-3 h-3" />
           </a>
         </div>
       )}
 
-      {/* Amount Input */}
       <div className="mb-4">
-        <label className="text-sm text-[--text-secondary] block mb-2">Amount (USDT0)</label>
+        <label className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground font-display block mb-2">
+          Amount (USDT0)
+        </label>
         <div className="relative">
           <input
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="Enter amount"
-            className="input text-lg font-semibold"
+            className="input text-lg font-semibold font-mono"
             disabled={disabled}
             step="0.01"
             min="0"
           />
         </div>
-        <div className="flex justify-between mt-2 text-xs text-[--text-muted]">
-          <span>Balance: ${Number(formattedBalance).toFixed(2)}</span>
+        <div className="flex justify-between mt-2 text-xs text-muted-foreground">
+          <span className="font-mono">Balance: ${Number(formattedBalance).toFixed(2)}</span>
           <button
             onClick={() => setAmount(formattedBalance)}
-            className="text-[--accent-blue] hover:underline"
+            className="text-primary hover:text-primary/80 transition-colors font-display font-bold uppercase text-[10px] tracking-[0.15em]"
             disabled={disabled}
           >
             Max
@@ -205,13 +204,12 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
         </div>
       </div>
 
-      {/* Quick Amount Buttons */}
       <div className="flex gap-2 mb-4">
         {quickAmounts.map((qa) => (
           <button
             key={qa}
             onClick={() => setAmount(qa)}
-            className="btn btn-outline flex-1 py-2 text-sm"
+            className="btn btn-outline flex-1 py-2 text-sm font-mono"
             disabled={disabled}
           >
             ${qa}
@@ -219,36 +217,38 @@ export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastR
         ))}
       </div>
 
-      {/* Order Summary */}
       {amount && parseFloat(amount) > 0 && (
-        <div className="bg-[--bg-secondary] rounded-lg p-3 mb-4 space-y-2 text-sm">
+        <div className="bg-white/[0.02] border border-white/5 rounded-lg p-3 mb-4 space-y-2 text-sm">
           <div className="flex justify-between">
-            <span className="text-[--text-secondary]">Avg price</span>
-            <span className="font-medium">${avgPrice}</span>
+            <span className="text-muted-foreground font-display text-xs uppercase tracking-wider">Avg price</span>
+            <span className="font-medium font-mono text-white">${avgPrice}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-[--text-secondary]">Shares</span>
-            <span className="font-medium">{Number(formattedExpected).toFixed(2)}</span>
+            <span className="text-muted-foreground font-display text-xs uppercase tracking-wider">Shares</span>
+            <span className="font-medium font-mono text-white">{Number(formattedExpected).toFixed(2)}</span>
           </div>
-          <div className="flex justify-between pt-2 border-t border-[--border-color]">
-            <span className="text-[--text-secondary]">Potential return</span>
-            <span className="font-bold text-[--accent-green]">
+          <div className="flex justify-between pt-2 border-t border-white/5">
+            <span className="text-muted-foreground font-display text-xs uppercase tracking-wider">Potential return</span>
+            <span className="font-bold font-mono text-green-400">
               ${Number(formattedExpected).toFixed(2)} (+{potentialProfit > 0 ? potentialProfit.toFixed(2) : '0.00'})
             </span>
           </div>
         </div>
       )}
 
-      {/* Action Button */}
       {disabled ? (
-        <button className="btn btn-outline w-full py-3">
+        <button className="btn w-full py-3 bg-primary/20 text-primary border border-primary/30 hover:bg-primary/30 transition-colors inline-flex items-center justify-center gap-2">
+          <Wallet className="w-4 h-4" />
           Connect Wallet
         </button>
       ) : (
         <button
           onClick={handleBuy}
           disabled={!amount || parseFloat(amount) <= 0 || isProcessing}
-          className={`btn w-full py-3 ${side === 'yes' ? 'btn-yes active' : 'btn-no active'}`}
+          className={cn(
+            "btn w-full py-3 font-display uppercase tracking-wide",
+            side === 'yes' ? "btn-yes active" : "btn-no active"
+          )}
         >
           {getButtonText()}
         </button>

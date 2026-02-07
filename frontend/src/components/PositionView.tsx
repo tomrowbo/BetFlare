@@ -4,6 +4,8 @@ import { useAccount, useReadContract } from 'wagmi';
 import { formatUnits } from 'viem';
 import { CONTRACTS, FPMM_ABI, CONDITIONAL_TOKENS_ABI } from '@/config/contracts';
 import { Skeleton } from './Skeleton';
+import { cn } from '@/lib/utils';
+import { Trophy, TrendingUp, TrendingDown } from 'lucide-react';
 
 interface PositionViewProps {
   fpmmAddress: string;
@@ -75,7 +77,6 @@ export function PositionView({
 
   const hasPositions = Number(formattedYesBalance) > 0 || Number(formattedNoBalance) > 0;
 
-  // Calculate redeemable amount for resolved markets
   const hasWinningPosition = resolved && yesWon !== null && (
     (yesWon && Number(formattedYesBalance) > 0) || (!yesWon && Number(formattedNoBalance) > 0)
   );
@@ -87,13 +88,12 @@ export function PositionView({
     return null;
   }
 
-  // Show skeleton while loading
   if (isLoadingPositions) {
     return (
-      <div className="card">
+      <div className="card p-5">
         <Skeleton width={100} height={14} className="mb-3" />
         <div className="space-y-2">
-          <div className="flex items-center justify-between p-3 rounded-lg border border-[--border-color]">
+          <div className="flex items-center justify-between p-3 rounded-lg border border-white/5">
             <div className="flex items-center gap-2">
               <Skeleton width={8} height={8} rounded="full" />
               <div>
@@ -116,46 +116,59 @@ export function PositionView({
   }
 
   return (
-    <div className="card">
-      <h3 className="text-sm font-semibold text-[--text-secondary] mb-3">
+    <div className="card p-5">
+      <h3 className="text-[10px] uppercase tracking-[0.2em] font-bold text-muted-foreground font-display mb-3">
         {resolved ? 'Your Results' : 'Your Positions'}
       </h3>
 
       <div className="space-y-2">
         {Number(formattedYesBalance) > 0 && (
-          <div className={`flex items-center justify-between p-3 rounded-lg border ${
+          <div className={cn(
+            "flex items-center justify-between p-3 rounded-lg border",
             resolved
               ? yesWon
-                ? 'bg-[--accent-green]/20 border-[--accent-green]/40'
-                : 'bg-gray-500/10 border-gray-500/20 opacity-60'
-              : 'bg-green-50 border-green-100'
-          }`}>
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${
-                resolved && !yesWon ? 'bg-gray-400' : 'bg-green-500'
-              }`}></span>
+                ? "bg-green-500/10 border-green-500/25"
+                : "bg-white/[0.02] border-white/5 opacity-60"
+              : "bg-green-500/5 border-green-500/15"
+          )}>
+            <div className="flex items-center gap-2.5">
+              <div className={cn(
+                "w-6 h-6 rounded-full flex items-center justify-center",
+                resolved && !yesWon ? "bg-white/5" : "bg-green-500/15"
+              )}>
+                {resolved ? (
+                  yesWon ? <Trophy className="w-3 h-3 text-green-400" /> : <TrendingDown className="w-3 h-3 text-white/30" />
+                ) : (
+                  <TrendingUp className="w-3 h-3 text-green-400" />
+                )}
+              </div>
               <div>
-                <span className={`font-semibold ${
-                  resolved && !yesWon ? 'text-gray-400' : 'text-green-800'
-                }`}>
+                <span className={cn(
+                  "font-semibold font-display text-sm",
+                  resolved && !yesWon ? "text-white/30" : "text-green-400"
+                )}>
                   YES {resolved && (yesWon ? '(Winner!)' : '(Lost)')}
                 </span>
-                <span className={`text-sm ml-2 ${
-                  resolved && !yesWon ? 'text-gray-400' : 'text-green-600'
-                }`}>
+                <span className={cn(
+                  "text-xs ml-2 font-mono",
+                  resolved && !yesWon ? "text-white/20" : "text-green-400/60"
+                )}>
                   {Number(formattedYesBalance).toFixed(2)} shares
                 </span>
               </div>
             </div>
             <div className="text-right">
               {resolved ? (
-                <div className={`font-semibold ${yesWon ? 'text-[--accent-green]' : 'text-gray-400'}`}>
+                <div className={cn(
+                  "font-semibold font-mono",
+                  yesWon ? "text-green-400" : "text-white/30"
+                )}>
                   ${yesWon ? Number(formattedYesBalance).toFixed(2) : '0.00'}
                 </div>
               ) : (
                 <>
-                  <div className="font-semibold">${yesValue.toFixed(2)}</div>
-                  <div className="text-xs text-[--text-muted]">
+                  <div className="font-semibold font-mono text-white">${yesValue.toFixed(2)}</div>
+                  <div className="text-[10px] text-muted-foreground font-mono">
                     Max ${Number(formattedYesBalance).toFixed(2)}
                   </div>
                 </>
@@ -165,39 +178,52 @@ export function PositionView({
         )}
 
         {Number(formattedNoBalance) > 0 && (
-          <div className={`flex items-center justify-between p-3 rounded-lg border ${
+          <div className={cn(
+            "flex items-center justify-between p-3 rounded-lg border",
             resolved
               ? !yesWon
-                ? 'bg-[--accent-red]/20 border-[--accent-red]/40'
-                : 'bg-gray-500/10 border-gray-500/20 opacity-60'
-              : 'bg-red-50 border-red-100'
-          }`}>
-            <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${
-                resolved && yesWon ? 'bg-gray-400' : 'bg-red-500'
-              }`}></span>
+                ? "bg-red-500/10 border-red-500/25"
+                : "bg-white/[0.02] border-white/5 opacity-60"
+              : "bg-red-500/5 border-red-500/15"
+          )}>
+            <div className="flex items-center gap-2.5">
+              <div className={cn(
+                "w-6 h-6 rounded-full flex items-center justify-center",
+                resolved && yesWon ? "bg-white/5" : "bg-red-500/15"
+              )}>
+                {resolved ? (
+                  !yesWon ? <Trophy className="w-3 h-3 text-red-400" /> : <TrendingDown className="w-3 h-3 text-white/30" />
+                ) : (
+                  <TrendingDown className="w-3 h-3 text-red-400" />
+                )}
+              </div>
               <div>
-                <span className={`font-semibold ${
-                  resolved && yesWon ? 'text-gray-400' : 'text-red-800'
-                }`}>
+                <span className={cn(
+                  "font-semibold font-display text-sm",
+                  resolved && yesWon ? "text-white/30" : "text-red-400"
+                )}>
                   NO {resolved && (!yesWon ? '(Winner!)' : '(Lost)')}
                 </span>
-                <span className={`text-sm ml-2 ${
-                  resolved && yesWon ? 'text-gray-400' : 'text-red-600'
-                }`}>
+                <span className={cn(
+                  "text-xs ml-2 font-mono",
+                  resolved && yesWon ? "text-white/20" : "text-red-400/60"
+                )}>
                   {Number(formattedNoBalance).toFixed(2)} shares
                 </span>
               </div>
             </div>
             <div className="text-right">
               {resolved ? (
-                <div className={`font-semibold ${!yesWon ? 'text-[--accent-red]' : 'text-gray-400'}`}>
+                <div className={cn(
+                  "font-semibold font-mono",
+                  !yesWon ? "text-red-400" : "text-white/30"
+                )}>
                   ${!yesWon ? Number(formattedNoBalance).toFixed(2) : '0.00'}
                 </div>
               ) : (
                 <>
-                  <div className="font-semibold">${noValue.toFixed(2)}</div>
-                  <div className="text-xs text-[--text-muted]">
+                  <div className="font-semibold font-mono text-white">${noValue.toFixed(2)}</div>
+                  <div className="text-[10px] text-muted-foreground font-mono">
                     Max ${Number(formattedNoBalance).toFixed(2)}
                   </div>
                 </>
@@ -207,12 +233,11 @@ export function PositionView({
         )}
       </div>
 
-      {/* Redeem Button for resolved markets */}
       {resolved && hasWinningPosition && onRedeem && (
         <button
           onClick={onRedeem}
           disabled={isRedeeming}
-          className="w-full mt-4 py-3 bg-[--accent-green] text-white font-bold rounded-xl hover:bg-[--accent-green]/80 transition disabled:opacity-50"
+          className="w-full mt-4 py-3 bg-green-500 text-white font-bold font-display uppercase tracking-wide rounded-lg hover:bg-green-500/80 transition-colors disabled:opacity-50"
         >
           {isRedeeming ? 'Redeeming...' : `Redeem $${redeemableAmount.toFixed(2)}`}
         </button>
