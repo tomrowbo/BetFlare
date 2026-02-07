@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
-import { PrimeSdk, EtherspotBundler } from '@etherspot/prime-sdk';
+import { PrimeSdk, EtherspotBundler, Web3eip1193WalletProvider } from '@etherspot/prime-sdk';
 import { ETHERSPOT_CONFIG } from '@/config/etherspot';
 
 // Types for batch transactions
@@ -22,6 +22,7 @@ interface EtherspotContextValue {
 
   // Connection methods
   initializeWithPrivateKey: (privateKey: string) => Promise<string>;
+  initializeWithProvider: (provider: any) => Promise<string>;
   disconnect: () => void;
 
   // Transaction methods
@@ -86,6 +87,55 @@ export function EtherspotProvider({ children }: { children: ReactNode }) {
       return address;
     } catch (error: any) {
       console.error('[Etherspot] ====== INITIALIZATION FAILED ======');
+      console.error('[Etherspot] Error:', error);
+      console.error('[Etherspot] Error message:', error?.message);
+      throw error;
+    } finally {
+      setIsInitializing(false);
+    }
+  }, []);
+
+  // Initialize SDK with an EIP-1193 provider (MetaMask, RainbowKit, etc.)
+  const initializeWithProvider = useCallback(async (provider: any): Promise<string> => {
+    setIsInitializing(true);
+    try {
+      console.log('[Etherspot] ====== PROVIDER INITIALIZATION START ======');
+      console.log('[Etherspot] Chain ID:', ETHERSPOT_CONFIG.chainId);
+
+      // Wrap the EIP-1193 provider for Etherspot
+      console.log('[Etherspot] Creating Web3eip1193WalletProvider...');
+      const web3Provider = await Web3eip1193WalletProvider.connect(provider);
+      console.log('[Etherspot] Web3eip1193WalletProvider created');
+
+      // Create bundler instance
+      console.log('[Etherspot] Creating EtherspotBundler...');
+      const bundler = new EtherspotBundler(
+        ETHERSPOT_CONFIG.chainId,
+        ETHERSPOT_CONFIG.apiKey
+      );
+      console.log('[Etherspot] Bundler created');
+
+      // Initialize Prime SDK with provider
+      console.log('[Etherspot] Creating PrimeSdk with provider...');
+      const sdk = new PrimeSdk(web3Provider, {
+        chainId: ETHERSPOT_CONFIG.chainId,
+        bundlerProvider: bundler,
+      });
+      console.log('[Etherspot] PrimeSdk created');
+
+      // Get the counterfactual smart account address
+      console.log('[Etherspot] Getting counterfactual address...');
+      const address = await sdk.getCounterFactualAddress();
+
+      setPrimeSdk(sdk);
+      setSmartAccountAddress(address);
+      localStorage.setItem('etherspot_smart_account', address);
+
+      console.log('[Etherspot] ====== PROVIDER INITIALIZATION SUCCESS ======');
+      console.log('[Etherspot] Smart account address:', address);
+      return address;
+    } catch (error: any) {
+      console.error('[Etherspot] ====== PROVIDER INITIALIZATION FAILED ======');
       console.error('[Etherspot] Error:', error);
       console.error('[Etherspot] Error message:', error?.message);
       throw error;
@@ -167,6 +217,7 @@ export function EtherspotProvider({ children }: { children: ReactNode }) {
         isInitialized: !!primeSdk,
         isInitializing,
         initializeWithPrivateKey,
+        initializeWithProvider,
         disconnect,
         sendUserOperation,
       }}

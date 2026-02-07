@@ -1,7 +1,7 @@
 'use client';
 
-import { createContext, useContext, ReactNode, useMemo } from 'react';
-import { useAccount } from 'wagmi';
+import { createContext, useContext, ReactNode, useMemo, useEffect, useState } from 'react';
+import { useAccount, useConnectorClient } from 'wagmi';
 import { useEtherspot } from './EtherspotContext';
 
 // Wallet connection mode
@@ -46,10 +46,58 @@ interface WalletProviderProps {
 
 export function WalletProvider({ children, socialUserInfo = null }: WalletProviderProps) {
   // EOA wallet from RainbowKit/wagmi
-  const { address: eoaAddress, isConnected: isEoaConnected } = useAccount();
+  const { address: eoaAddress, isConnected: isEoaConnected, connector } = useAccount();
+  const { data: connectorClient } = useConnectorClient();
 
   // Smart account from Etherspot
-  const { smartAccountAddress, isInitialized: isEtherspotInitialized } = useEtherspot();
+  const { smartAccountAddress, isInitialized: isEtherspotInitialized, initializeWithProvider, isInitializing } = useEtherspot();
+
+  // Track if we've already tried to initialize for this connection
+  const [hasInitialized, setHasInitialized] = useState(false);
+
+  // Auto-initialize Etherspot when wagmi connects (MetaMask, etc.)
+  useEffect(() => {
+    const initEtherspot = async () => {
+      // Only initialize if:
+      // 1. wagmi is connected
+      // 2. We have a connector client with transport
+      // 3. Etherspot is not already initialized
+      // 4. We haven't already tried to initialize
+      // 5. We're not currently initializing
+      if (
+        isEoaConnected &&
+        connectorClient &&
+        !isEtherspotInitialized &&
+        !hasInitialized &&
+        !isInitializing
+      ) {
+        console.log('[WalletContext] wagmi connected, initializing Etherspot...');
+        setHasInitialized(true);
+
+        try {
+          // Get the underlying provider from wagmi's connector client
+          // The transport contains the EIP-1193 provider
+          const provider = (connectorClient as any).transport;
+          if (provider) {
+            await initializeWithProvider(provider);
+            console.log('[WalletContext] Etherspot initialized with wagmi provider');
+          }
+        } catch (error) {
+          console.error('[WalletContext] Failed to initialize Etherspot:', error);
+          setHasInitialized(false); // Allow retry
+        }
+      }
+    };
+
+    initEtherspot();
+  }, [isEoaConnected, connectorClient, isEtherspotInitialized, hasInitialized, isInitializing, initializeWithProvider]);
+
+  // Reset hasInitialized when disconnected
+  useEffect(() => {
+    if (!isEoaConnected && !isEtherspotInitialized) {
+      setHasInitialized(false);
+    }
+  }, [isEoaConnected, isEtherspotInitialized]);
 
   const value = useMemo((): WalletContextValue => {
     // Priority: Smart Account (social login) > EOA (RainbowKit)
