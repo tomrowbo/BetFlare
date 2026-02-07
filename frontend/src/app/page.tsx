@@ -1,54 +1,54 @@
 'use client';
 
-import { useReadContract } from 'wagmi';
+import { useReadContract, useReadContracts } from 'wagmi';
 import { formatUnits } from 'viem';
 import { Header } from '@/components/Header';
 import { MiniPriceChart } from '@/components/MiniPriceChart';
 import Link from 'next/link';
-import { useState } from 'react';
-import { CONTRACTS, UNIVERSAL_VAULT_ABI, FPMM_ABI } from '@/config/contracts';
+import { useState, useMemo } from 'react';
+import { CONTRACTS, MARKETS, Market, UNIVERSAL_VAULT_ABI, FPMM_ABI } from '@/config/contracts';
+import { FeaturedMarketSkeleton, MarketListItemSkeleton, StatsCardSkeleton } from '@/components/Skeleton';
 
 function FeaturedMarketCard({
-  title,
-  volume,
+  market,
   yesPrice,
-  href,
-  resolutionDate,
-  icon,
-  trend,
+  volume,
+  resolved,
 }: {
-  title: string;
-  volume: string;
+  market: Market;
   yesPrice: number;
-  href: string;
-  resolutionDate: string;
-  icon: string;
-  trend: 'up' | 'down' | 'neutral';
+  volume: number;
+  resolved: boolean;
 }) {
+  const now = Math.floor(Date.now() / 1000);
+  const isPastResolution = now >= market.resolutionTime;
+
   return (
-    <Link href={href} className="block">
+    <Link href={`/markets/${market.slug}`} className="block">
       <div className="card hover:border-[--accent-blue] transition cursor-pointer bg-gradient-to-br from-white to-gray-50 dark:from-[#1a1a2e] dark:to-[#16213e]">
         <div className="flex items-start gap-4">
-          {/* Icon */}
-          <div className="text-4xl">{icon}</div>
+          <div className="text-4xl">{market.icon}</div>
 
-          {/* Content */}
           <div className="flex-1 min-w-0">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="font-bold text-xl mb-1">{title}</h3>
-                <div className="text-sm text-[--text-muted]">{resolutionDate}</div>
+                <h3 className="font-bold text-xl mb-1">{market.title}</h3>
+                <div className="text-sm text-[--text-muted]">
+                  {resolved ? 'Resolved' : isPastResolution ? 'Awaiting Resolution' : `Resolves ${new Date(market.resolutionTime * 1000).toLocaleString()}`}
+                </div>
               </div>
-              <div className="flex items-center gap-1 text-sm">
-                <span className={trend === 'up' ? 'text-[--accent-green]' : trend === 'down' ? 'text-[--accent-red]' : 'text-[--text-muted]'}>
-                  {trend === 'up' ? '▲' : trend === 'down' ? '▼' : '–'}
-                </span>
-                <span className="text-[--text-muted]">24h</span>
+              <div>
+                {resolved ? (
+                  <span className="px-2 py-1 bg-gray-500/20 text-gray-400 text-xs font-semibold rounded">RESOLVED</span>
+                ) : isPastResolution ? (
+                  <span className="px-2 py-1 bg-[--accent-orange]/20 text-[--accent-orange] text-xs font-semibold rounded">AWAITING</span>
+                ) : (
+                  <span className="px-2 py-1 bg-[--accent-green]/10 text-[--accent-green] text-xs font-semibold rounded">LIVE</span>
+                )}
               </div>
             </div>
 
             <div className="flex items-end justify-between mt-4">
-              {/* Prices */}
               <div className="flex gap-6">
                 <div>
                   <div className="text-xs text-[--text-muted] mb-1">YES</div>
@@ -60,12 +60,11 @@ function FeaturedMarketCard({
                 </div>
                 <div>
                   <div className="text-xs text-[--text-muted] mb-1">Volume</div>
-                  <div className="text-lg font-semibold">{volume}</div>
+                  <div className="text-lg font-semibold">${volume.toFixed(2)}</div>
                 </div>
               </div>
 
-              {/* Sparkline - Real data from blockchain */}
-              <MiniPriceChart yesPrice={yesPrice} width={128} height={48} />
+              <MiniPriceChart yesPrice={yesPrice} width={128} height={48} fpmmAddress={market.fpmm} />
             </div>
           </div>
         </div>
@@ -75,31 +74,30 @@ function FeaturedMarketCard({
 }
 
 function MarketListItem({
-  title,
-  volume,
+  market,
   yesPrice,
-  href,
-  resolutionDate,
-  icon,
-  category,
+  volume,
+  resolved,
 }: {
-  title: string;
-  volume: string;
+  market: Market;
   yesPrice: number;
-  href: string;
-  resolutionDate: string;
-  icon: string;
-  category: string;
+  volume: number;
+  resolved: boolean;
 }) {
+  const now = Math.floor(Date.now() / 1000);
+  const isPastResolution = now >= market.resolutionTime;
+
   return (
-    <Link href={href} className="block">
-      <div className="card hover:border-[--accent-blue] transition cursor-pointer">
+    <Link href={`/markets/${market.slug}`} className="block">
+      <div className={`card hover:border-[--accent-blue] transition cursor-pointer ${resolved ? 'opacity-60' : ''}`}>
         <div className="flex items-center gap-4">
-          <div className="text-2xl">{icon}</div>
+          <div className="text-2xl">{market.icon}</div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-semibold">{title}</h3>
+            <h3 className="font-semibold">{market.title}</h3>
             <div className="text-sm text-[--text-muted]">
-              <span className="text-[--accent-blue]">{category}</span> · {resolutionDate} · Vol: {volume}
+              <span className="text-[--accent-blue]">{market.category}</span> ·
+              {resolved ? ' Resolved' : isPastResolution ? ' Awaiting Resolution' : ` ${new Date(market.resolutionTime * 1000).toLocaleString()}`} ·
+              Vol: ${volume.toFixed(2)}
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -111,6 +109,13 @@ function MarketListItem({
               <div className="text-xs text-[--text-muted]">NO</div>
               <div className="font-bold text-[--accent-red]">{((1 - yesPrice) * 100).toFixed(0)}¢</div>
             </div>
+            {resolved ? (
+              <span className="px-2 py-1 bg-gray-500/20 text-gray-400 text-xs rounded">RESOLVED</span>
+            ) : isPastResolution ? (
+              <span className="px-2 py-1 bg-[--accent-orange]/20 text-[--accent-orange] text-xs rounded">AWAITING</span>
+            ) : (
+              <span className="px-2 py-1 bg-[--accent-green]/10 text-[--accent-green] text-xs rounded">LIVE</span>
+            )}
           </div>
         </div>
       </div>
@@ -141,36 +146,86 @@ const CATEGORIES = ['All', 'Price', 'DeFi', 'Ecosystem'] as const;
 
 export default function Home() {
   const [activeCategory, setActiveCategory] = useState<typeof CATEGORIES[number]>('All');
+  const now = Math.floor(Date.now() / 1000);
 
-  // Get XRP market data
-  const { data: yesPrice } = useReadContract({
-    address: CONTRACTS.fpmm as `0x${string}`,
-    abi: FPMM_ABI,
-    functionName: 'getYesPrice',
+  // Read data for all markets
+  const marketContracts = MARKETS.flatMap((market) => [
+    {
+      address: market.fpmm as `0x${string}`,
+      abi: FPMM_ABI,
+      functionName: 'getYesPrice',
+    },
+    {
+      address: market.fpmm as `0x${string}`,
+      abi: FPMM_ABI,
+      functionName: 'yesReserve',
+    },
+    {
+      address: market.fpmm as `0x${string}`,
+      abi: FPMM_ABI,
+      functionName: 'noReserve',
+    },
+    {
+      address: market.fpmm as `0x${string}`,
+      abi: FPMM_ABI,
+      functionName: 'resolved',
+    },
+  ]);
+
+  const { data: marketData, isLoading: isLoadingMarkets } = useReadContracts({
+    contracts: marketContracts,
   });
 
-  const { data: yesReserve } = useReadContract({
-    address: CONTRACTS.fpmm as `0x${string}`,
-    abi: FPMM_ABI,
-    functionName: 'yesReserve',
-  });
-
-  const { data: noReserve } = useReadContract({
-    address: CONTRACTS.fpmm as `0x${string}`,
-    abi: FPMM_ABI,
-    functionName: 'noReserve',
-  });
-
-  const { data: totalAssets } = useReadContract({
+  const { data: totalAssets, isLoading: isLoadingTvl } = useReadContract({
     address: CONTRACTS.universalVault as `0x${string}`,
     abi: UNIVERSAL_VAULT_ABI,
     functionName: 'totalAssets',
   });
 
-  const formattedYesPrice = yesPrice ? Number(formatUnits(yesPrice as bigint, 18)) : 0.5;
-  const volume = yesReserve && noReserve
-    ? Number(formatUnits((yesReserve as bigint) + (noReserve as bigint), 6))
-    : 0;
+  const isLoading = isLoadingMarkets || isLoadingTvl;
+
+  // Process market data
+  const processedMarkets = useMemo(() => {
+    return MARKETS.map((market, index) => {
+      const baseIndex = index * 4;
+      const yesPrice = marketData?.[baseIndex]?.result;
+      const yesReserve = marketData?.[baseIndex + 1]?.result;
+      const noReserve = marketData?.[baseIndex + 2]?.result;
+      const resolved = marketData?.[baseIndex + 3]?.result;
+
+      const formattedYesPrice = yesPrice ? Number(formatUnits(yesPrice as bigint, 18)) : 0.5;
+      const volume = yesReserve && noReserve
+        ? Number(formatUnits((yesReserve as bigint) + (noReserve as bigint), 6))
+        : 0;
+
+      return {
+        market,
+        yesPrice: formattedYesPrice,
+        volume,
+        resolved: resolved as boolean || false,
+      };
+    });
+  }, [marketData]);
+
+  // Categorize markets
+  const { activeMarkets, awaitingResolution, resolvedMarkets } = useMemo(() => {
+    const active: typeof processedMarkets = [];
+    const awaiting: typeof processedMarkets = [];
+    const resolved: typeof processedMarkets = [];
+
+    for (const pm of processedMarkets) {
+      if (pm.resolved) {
+        resolved.push(pm);
+      } else if (now >= pm.market.resolutionTime) {
+        awaiting.push(pm);
+      } else {
+        active.push(pm);
+      }
+    }
+
+    return { activeMarkets: active, awaitingResolution: awaiting, resolvedMarkets: resolved };
+  }, [processedMarkets, now]);
+
   const tvl = totalAssets ? Number(formatUnits(totalAssets as bigint, 6)) : 0;
 
   // Coming soon markets - Flare/XRP themed, after Feb 8th
@@ -184,9 +239,6 @@ export default function Home() {
   const filteredComingSoon = activeCategory === 'All'
     ? comingSoonMarkets
     : comingSoonMarkets.filter(m => m.category === activeCategory);
-
-  // Expired markets (empty for now)
-  const expiredMarkets: { title: string; outcome: 'yes' | 'no'; icon: string }[] = [];
 
   return (
     <main className="min-h-screen">
@@ -202,13 +254,19 @@ export default function Home() {
             </div>
             <div className="hidden sm:flex items-center gap-4">
               <div className="text-center">
-                <div className="text-2xl font-bold">${tvl.toFixed(2)}</div>
+                <div className="text-2xl font-bold">
+                  {isLoadingTvl ? (
+                    <span className="inline-block w-20 h-7 bg-white/30 rounded animate-pulse" />
+                  ) : (
+                    `$${tvl.toFixed(2)}`
+                  )}
+                </div>
                 <div className="text-sm text-white/70">Total Locked</div>
               </div>
               <div className="w-px h-10 bg-white/20" />
               <div className="text-center">
-                <div className="text-2xl font-bold">1</div>
-                <div className="text-sm text-white/70">Active Markets</div>
+                <div className="text-2xl font-bold">{MARKETS.length}</div>
+                <div className="text-sm text-white/70">Markets</div>
               </div>
             </div>
           </div>
@@ -216,26 +274,89 @@ export default function Home() {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Featured Market */}
+        {/* Active Markets */}
         <section className="mb-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold flex items-center gap-2">
-              <span className="text-xl">🔥</span> Featured Market
+              <span className="text-xl">⚡</span> Active Markets
             </h2>
             <span className="px-2 py-1 bg-[--accent-green]/10 text-[--accent-green] text-xs font-semibold rounded">
               LIVE
             </span>
           </div>
-          <FeaturedMarketCard
-            title="Will XRP be above $3.00?"
-            volume={`$${volume.toFixed(2)}`}
-            yesPrice={formattedYesPrice}
-            href="/markets/xrp-above-3"
-            resolutionDate="Resolves Feb 7, 2026"
-            icon="💰"
-            trend={formattedYesPrice > 0.5 ? 'up' : formattedYesPrice < 0.5 ? 'down' : 'neutral'}
-          />
+          <div className="space-y-4">
+            {isLoading ? (
+              // Show skeleton loaders while data is loading
+              <>
+                <FeaturedMarketSkeleton />
+                <FeaturedMarketSkeleton />
+              </>
+            ) : activeMarkets.length > 0 ? (
+              activeMarkets.map((pm) => (
+                <FeaturedMarketCard
+                  key={pm.market.slug}
+                  market={pm.market}
+                  yesPrice={pm.yesPrice}
+                  volume={pm.volume}
+                  resolved={pm.resolved}
+                />
+              ))
+            ) : (
+              <div className="card text-center py-8 text-[--text-muted]">
+                No active markets
+              </div>
+            )}
+          </div>
         </section>
+
+        {/* Awaiting Resolution */}
+        {(isLoading || awaitingResolution.length > 0) && (
+          <section className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <span className="text-xl">⏳</span> Awaiting Resolution
+              </h2>
+              <span className="px-2 py-1 bg-[--accent-orange]/20 text-[--accent-orange] text-xs font-semibold rounded">
+                PENDING
+              </span>
+            </div>
+            <div className="space-y-3">
+              {isLoading ? (
+                <MarketListItemSkeleton />
+              ) : (
+                awaitingResolution.map((pm) => (
+                  <MarketListItem
+                    key={pm.market.slug}
+                    market={pm.market}
+                    yesPrice={pm.yesPrice}
+                    volume={pm.volume}
+                    resolved={pm.resolved}
+                  />
+                ))
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Resolved Markets */}
+        {!isLoading && resolvedMarkets.length > 0 && (
+          <section className="mb-8">
+            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+              <span>📜</span> Resolved Markets
+            </h2>
+            <div className="space-y-3">
+              {resolvedMarkets.map((pm) => (
+                <MarketListItem
+                  key={pm.market.slug}
+                  market={pm.market}
+                  yesPrice={pm.yesPrice}
+                  volume={pm.volume}
+                  resolved={pm.resolved}
+                />
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Category Tabs */}
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
@@ -257,35 +378,6 @@ export default function Home() {
             </button>
           ))}
         </div>
-
-        {/* Expired Markets */}
-        {expiredMarkets.length > 0 && (
-          <section className="mb-8">
-            <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
-              <span>📜</span> Expired Markets
-            </h2>
-            <div className="space-y-3">
-              {expiredMarkets.map((market, i) => (
-                <div key={i} className="card opacity-60">
-                  <div className="flex items-center gap-4">
-                    <div className="text-2xl grayscale">{market.icon}</div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold">{market.title}</h3>
-                      <div className="text-sm text-[--text-muted]">Resolved</div>
-                    </div>
-                    <span className={`px-3 py-1 text-sm rounded-full ${
-                      market.outcome === 'yes'
-                        ? 'bg-[--accent-green]/20 text-[--accent-green]'
-                        : 'bg-[--accent-red]/20 text-[--accent-red]'
-                    }`}>
-                      {market.outcome === 'yes' ? 'YES ✓' : 'NO ✓'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
 
         {/* Coming Soon */}
         <section className="mb-8">
@@ -314,7 +406,6 @@ export default function Home() {
         {/* LP Widget */}
         <section className="mt-10">
           <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-[#1a1a2e] to-[#0f3460] p-6">
-            {/* Background decoration */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-[--accent-green]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
             <div className="absolute bottom-0 left-0 w-48 h-48 bg-[--accent-blue]/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2" />
 

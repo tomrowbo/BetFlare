@@ -11,10 +11,12 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 interface IFPMM {
     function addLiquidity(uint256 amount) external;
     function removeLiquidity(uint256 amount) external returns (uint256);
+    function withdrawAfterResolution() external returns (uint256);
     function setRouter(address router) external;
     function yesReserve() external view returns (uint256);
     function noReserve() external view returns (uint256);
     function collateralToken() external view returns (address);
+    function resolved() external view returns (bool);
 }
 
 /**
@@ -141,6 +143,26 @@ contract LiquidityRouter is
         }
     }
 
+    /**
+     * @notice Reclaim liquidity from a resolved market
+     * @dev Calls withdrawAfterResolution on the FPMM to redeem winning tokens
+     * @param fpmm The resolved market to reclaim from
+     * @return recovered Amount of collateral recovered
+     */
+    function reclaimFromResolved(address fpmm) external onlyOwner nonReentrant returns (uint256 recovered) {
+        require(IFPMM(fpmm).resolved(), "Market not resolved");
+
+        // Withdraw from resolved market (redeems winning outcome tokens)
+        recovered = IFPMM(fpmm).withdrawAfterResolution();
+
+        // Send recovered funds to vault
+        if (recovered > 0 && vault != address(0)) {
+            usdt.safeTransfer(vault, recovered);
+        }
+
+        emit LiquidityWithdrawn(recovered);
+    }
+
     // ============ Liquidity Deployment ============
 
     /**
@@ -223,11 +245,58 @@ contract LiquidityRouter is
     }
 
     function _rebalance() internal {
-        // Note: True rebalancing would require withdrawing from markets
-        // For hackathon, we just ensure new deposits are distributed equally
-        // Future: Add FPMM.removeLiquidity() support
+        uint256 n = activeMarkets.length;
+        if (n == 0) return;
 
-        emit Rebalanced(activeMarkets.length);
+        // Calculate current total liquidity across all markets (using actual reserves)
+        uint256 totalLiquidity = 0;
+        uint256[] memory currentBalances = new uint256[](n);
+
+        for (uint256 i = 0; i < n; i++) {
+            address fpmm = activeMarkets[i];
+            // Use minimum of yes/no reserves as the "rebalanceable" liquidity
+            uint256 yes = IFPMM(fpmm).yesReserve();
+            uint256 no = IFPMM(fpmm).noReserve();
+            currentBalances[i] = yes < no ? yes : no;
+            totalLiquidity += currentBalances[i];
+        }
+
+        if (totalLiquidity == 0) return;
+
+        // Target per market
+        uint256 targetPerMarket = totalLiquidity / n;
+
+        // First pass: withdraw from over-allocated markets
+        for (uint256 i = 0; i < n; i++) {
+            if (currentBalances[i] > targetPerMarket) {
+                uint256 excess = currentBalances[i] - targetPerMarket;
+                address fpmm = activeMarkets[i];
+
+                // Remove excess liquidity
+                uint256 received = IFPMM(fpmm).removeLiquidity(excess);
+                allocations[fpmm].deployedAmount = targetPerMarket;
+
+                // Router now holds the withdrawn USDT
+            }
+        }
+
+        // Second pass: deposit to under-allocated markets
+        uint256 available = usdt.balanceOf(address(this));
+        for (uint256 i = 0; i < n && available > 0; i++) {
+            if (currentBalances[i] < targetPerMarket) {
+                uint256 deficit = targetPerMarket - currentBalances[i];
+                if (deficit > available) deficit = available;
+
+                address fpmm = activeMarkets[i];
+                usdt.approve(fpmm, deficit);
+                IFPMM(fpmm).addLiquidity(deficit);
+                allocations[fpmm].deployedAmount = targetPerMarket;
+
+                available -= deficit;
+            }
+        }
+
+        emit Rebalanced(n);
     }
 
     // ============ View Functions ============

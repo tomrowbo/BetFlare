@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react';
 import { usePublicClient } from 'wagmi';
 import { formatUnits, decodeAbiParameters, parseAbiParameters } from 'viem';
-import { CONTRACTS, FPMM_ABI } from '@/config/contracts';
+import { FPMM_ABI } from '@/config/contracts';
 
 // Buy event topic: keccak256('Buy(address,bool,uint256,uint256)')
 const BUY_EVENT_TOPIC = '0xe417997ad0a1c7dd102d3158fdf23af437ae25ed1926b1b069dc8e436fd16fb6';
 
 interface PriceChartProps {
   yesPrice: number; // Current YES price (0-1)
+  fpmmAddress: string;
 }
 
 interface PricePoint {
@@ -17,7 +18,7 @@ interface PricePoint {
   price: number;
 }
 
-export function PriceChart({ yesPrice }: PriceChartProps) {
+export function PriceChart({ yesPrice, fpmmAddress }: PriceChartProps) {
   const [priceHistory, setPriceHistory] = useState<PricePoint[]>([]);
   const [loading, setLoading] = useState(true);
   const publicClient = usePublicClient();
@@ -29,7 +30,7 @@ export function PriceChart({ yesPrice }: PriceChartProps) {
       try {
         // Fetch events from Coston2 explorer API (more reliable than RPC for historical logs)
         const response = await fetch(
-          `https://coston2-explorer.flare.network/api/v2/addresses/${CONTRACTS.fpmm}/logs`
+          `https://coston2-explorer.flare.network/api/v2/addresses/${fpmmAddress}/logs`
         );
         const data = await response.json();
 
@@ -90,7 +91,7 @@ export function PriceChart({ yesPrice }: PriceChartProps) {
     }
 
     fetchEvents();
-  }, [publicClient, yesPrice]);
+  }, [publicClient, yesPrice, fpmmAddress]);
 
   const width = 400;
   const height = 120;

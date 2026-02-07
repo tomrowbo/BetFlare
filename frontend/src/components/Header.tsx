@@ -4,9 +4,23 @@ import { ConnectButton } from '@rainbow-me/rainbowkit';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAccount, useReadContract } from 'wagmi';
+import { formatUnits } from 'viem';
+import { CONTRACTS, ERC20_ABI } from '@/config/contracts';
 
 export function Header() {
   const pathname = usePathname();
+  const { address, isConnected } = useAccount();
+
+  // Fetch USDT balance
+  const { data: usdtBalance, isLoading: isLoadingBalance } = useReadContract({
+    address: CONTRACTS.usdt as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address] : undefined,
+  });
+
+  const formattedBalance = usdtBalance ? Number(formatUnits(usdtBalance as bigint, 6)).toFixed(2) : '0.00';
 
   const navItems = [
     { href: '/', label: 'Markets' },
@@ -37,19 +51,34 @@ export function Header() {
             ))}
           </nav>
         </div>
-        <ConnectButton.Custom>
-          {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
-            const connected = mounted && account && chain;
-            return (
-              <button
-                onClick={connected ? openAccountModal : openConnectModal}
-                className="px-4 py-2 bg-black text-white font-semibold rounded-lg hover:bg-black/80 transition text-sm"
-              >
-                {connected ? account.displayName : 'Connect Wallet'}
-              </button>
-            );
-          }}
-        </ConnectButton.Custom>
+        <div className="flex items-center gap-3">
+          {/* Balance Display */}
+          {isConnected && (
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-black/10 rounded-lg">
+              <span className="text-sm font-medium text-black/70">Balance:</span>
+              <span className="text-sm font-bold text-black">
+                {isLoadingBalance ? (
+                  <span className="inline-block w-12 h-4 bg-black/20 rounded animate-pulse" />
+                ) : (
+                  `$${formattedBalance}`
+                )}
+              </span>
+            </div>
+          )}
+          <ConnectButton.Custom>
+            {({ account, chain, openConnectModal, openAccountModal, mounted }) => {
+              const connected = mounted && account && chain;
+              return (
+                <button
+                  onClick={connected ? openAccountModal : openConnectModal}
+                  className="px-4 py-2 bg-black text-white font-semibold rounded-lg hover:bg-black/80 transition text-sm"
+                >
+                  {connected ? account.displayName : 'Connect Wallet'}
+                </button>
+              );
+            }}
+          </ConnectButton.Custom>
+        </div>
       </div>
     </div>
   );

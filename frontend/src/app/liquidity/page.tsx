@@ -1,22 +1,27 @@
 'use client';
 
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { useAccount, useReadContract, useReadContracts, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { useQueryClient } from '@tanstack/react-query';
 import { parseUnits, formatUnits } from 'viem';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { Header } from '@/components/Header';
 import {
   CONTRACTS,
+  MARKETS,
   ERC20_ABI,
   UNIVERSAL_VAULT_ABI,
   FPMM_ABI,
 } from '@/config/contracts';
+import { LiquidityPageSkeleton } from '@/components/Skeleton';
 
 export default function LiquidityPage() {
   const { address, isConnected } = useAccount();
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');
+  const [refreshKey, setRefreshKey] = useState(0);
+  const queryClient = useQueryClient();
 
   // User balances
   const { data: usdtBalance } = useReadContract({
@@ -41,7 +46,7 @@ export default function LiquidityPage() {
   });
 
   // Vault stats
-  const { data: totalAssets } = useReadContract({
+  const { data: totalAssets, isLoading: isLoadingAssets } = useReadContract({
     address: CONTRACTS.universalVault as `0x${string}`,
     abi: UNIVERSAL_VAULT_ABI,
     functionName: 'totalAssets',
@@ -53,23 +58,22 @@ export default function LiquidityPage() {
     functionName: 'totalSupply',
   });
 
-  const { data: totalFeesReceived } = useReadContract({
+  const { data: totalFeesReceived, isLoading: isLoadingFees } = useReadContract({
     address: CONTRACTS.universalVault as `0x${string}`,
     abi: UNIVERSAL_VAULT_ABI,
     functionName: 'totalFeesReceived',
   });
 
-  // Market liquidity (from FPMM)
-  const { data: yesReserve } = useReadContract({
-    address: CONTRACTS.fpmm as `0x${string}`,
-    abi: FPMM_ABI,
-    functionName: 'yesReserve',
-  });
+  const isLoadingVaultStats = isLoadingAssets || isLoadingFees;
 
-  const { data: noReserve } = useReadContract({
-    address: CONTRACTS.fpmm as `0x${string}`,
-    abi: FPMM_ABI,
-    functionName: 'noReserve',
+  // Market liquidity (from all FPMMs)
+  const marketLiquidityContracts = MARKETS.flatMap((market) => [
+    { address: market.fpmm as `0x${string}`, abi: FPMM_ABI, functionName: 'yesReserve' },
+    { address: market.fpmm as `0x${string}`, abi: FPMM_ABI, functionName: 'noReserve' },
+  ]);
+
+  const { data: marketLiquidityData } = useReadContracts({
+    contracts: marketLiquidityContracts,
   });
 
   // Allowance check
@@ -220,9 +224,17 @@ export default function LiquidityPage() {
     fetchUserHistory();
   }, [address, formattedShareValue, depositSuccess, withdrawSuccess]);
 
-  const marketLiquidity = yesReserve && noReserve
-    ? Number(formatUnits((yesReserve as bigint) + (noReserve as bigint), 6))
-    : 0;
+  const marketLiquidity = useMemo(() => {
+    if (!marketLiquidityData) return 0;
+    let total = 0n;
+    for (let i = 0; i < marketLiquidityData.length; i += 2) {
+      const yes = marketLiquidityData[i]?.result as bigint | undefined;
+      const no = marketLiquidityData[i + 1]?.result as bigint | undefined;
+      if (yes) total += yes;
+      if (no) total += no;
+    }
+    return Number(formatUnits(total, 6));
+  }, [marketLiquidityData]);
 
   const needsApproval = useMemo(() => {
     if (!amount || allowance === undefined) return false;
@@ -282,6 +294,26 @@ export default function LiquidityPage() {
 
   const isLoading = isApproving || isDepositing || isWithdrawing;
 
+  // Auto-refresh after successful transactions
+  useEffect(() => {
+    if (depositSuccess || withdrawSuccess) {
+      // Invalidate all queries to refetch vault stats, balances, etc.
+      queryClient.invalidateQueries();
+      setRefreshKey(prev => prev + 1);
+      setAmount('');
+    }
+  }, [depositSuccess, withdrawSuccess, queryClient]);
+
+  // Show skeleton while loading initial vault data
+  if (isLoadingVaultStats) {
+    return (
+      <main className="min-h-screen">
+        <Header />
+        <LiquidityPageSkeleton />
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen">
       <Header />
@@ -330,7 +362,7 @@ export default function LiquidityPage() {
             </div>
           </div>
           <div className="h-32">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer key={`chart-${refreshKey}`} width="100%" height="100%">
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">

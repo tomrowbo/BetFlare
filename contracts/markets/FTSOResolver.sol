@@ -51,23 +51,23 @@ contract FTSOResolver is Ownable {
         conditionalTokens = ConditionalTokens(_conditionalTokens);
     }
 
+    event FPMMSet(bytes32 indexed marketId, address fpmm);
+
     /**
-     * @notice Create a new price prediction market
-     * @param symbol The FTSO symbol (e.g., "XRP", "FLR", "BTC")
+     * @notice Create a new price prediction market (Step 1)
+     * @dev Returns conditionId so FPMM can be deployed with it, then call setFPMM()
+     * @param symbol The FTSO symbol (e.g., "testXRP", "testBTC")
      * @param targetPrice Target price (5 decimals, e.g., 300000 = $3.00)
      * @param resolutionTime Unix timestamp when market resolves
      * @param isAbove true if betting price will be above target
-     * @param fpmm Address of the FPMM for this market
      */
     function createMarket(
         string calldata symbol,
         uint256 targetPrice,
         uint256 resolutionTime,
-        bool isAbove,
-        address fpmm
-    ) external onlyOwner returns (bytes32 marketId) {
+        bool isAbove
+    ) external onlyOwner returns (bytes32 marketId, bytes32 conditionId) {
         require(resolutionTime > block.timestamp, "Resolution must be future");
-        require(fpmm != address(0), "Invalid FPMM");
 
         // Create unique question ID
         bytes32 questionId = keccak256(
@@ -77,8 +77,8 @@ contract FTSOResolver is Ownable {
         // Prepare condition in ConditionalTokens
         conditionalTokens.prepareCondition(address(this), questionId, 2);
 
-        bytes32 conditionId = conditionalTokens.getConditionId(address(this), questionId, 2);
-        marketId = keccak256(abi.encodePacked(conditionId, fpmm));
+        conditionId = conditionalTokens.getConditionId(address(this), questionId, 2);
+        marketId = conditionId; // Use conditionId as marketId for simplicity
 
         markets[marketId] = Market({
             questionId: questionId,
@@ -88,12 +88,25 @@ contract FTSOResolver is Ownable {
             resolutionTime: resolutionTime,
             isAbove: isAbove,
             resolved: false,
-            fpmm: fpmm
+            fpmm: address(0) // Set later via setFPMM()
         });
 
         marketIds.push(marketId);
 
         emit MarketCreated(marketId, symbol, targetPrice, resolutionTime, isAbove);
+    }
+
+    /**
+     * @notice Set FPMM address for a market (Step 2)
+     * @dev Call after deploying FPMM with the conditionId from createMarket()
+     */
+    function setFPMM(bytes32 marketId, address fpmm) external onlyOwner {
+        require(markets[marketId].conditionId != bytes32(0), "Market not found");
+        require(markets[marketId].fpmm == address(0), "FPMM already set");
+        require(fpmm != address(0), "Invalid FPMM");
+
+        markets[marketId].fpmm = fpmm;
+        emit FPMMSet(marketId, fpmm);
     }
 
     /**

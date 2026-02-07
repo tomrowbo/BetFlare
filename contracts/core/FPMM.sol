@@ -473,6 +473,35 @@ contract FPMM is ERC1155Holder, ReentrancyGuard, EIP712 {
     }
 
     /**
+     * @notice Withdraw liquidity after market resolution
+     * @dev Redeems winning outcome tokens for collateral and sends to router
+     * @return collateralRecovered Amount of collateral recovered
+     */
+    function withdrawAfterResolution() external nonReentrant returns (uint256 collateralRecovered) {
+        require(msg.sender == router, "Only router");
+        require(resolved, "Not resolved");
+        require(yesReserve > 0 || noReserve > 0, "Already withdrawn");
+
+        // Redeem all outcome tokens held by this contract
+        // ConditionalTokens.redeemPositions will convert winning tokens to collateral
+        conditionalTokens.redeemPositions(conditionId);
+
+        // Get recovered collateral balance
+        collateralRecovered = collateralToken.balanceOf(address(this));
+
+        // Clear reserves
+        yesReserve = 0;
+        noReserve = 0;
+
+        // Transfer to router
+        if (collateralRecovered > 0) {
+            collateralToken.safeTransfer(router, collateralRecovered);
+        }
+
+        emit LiquidityRemoved(router, 0, 0, collateralRecovered);
+    }
+
+    /**
      * @notice Get EIP-712 domain separator for signature verification
      */
     function DOMAIN_SEPARATOR() external view returns (bytes32) {

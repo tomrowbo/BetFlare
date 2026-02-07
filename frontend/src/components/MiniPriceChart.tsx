@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { formatUnits, decodeAbiParameters, parseAbiParameters } from 'viem';
-import { CONTRACTS } from '@/config/contracts';
-
 // Buy event topic: keccak256('Buy(address,bool,uint256,uint256)')
 const BUY_EVENT_TOPIC = '0xe417997ad0a1c7dd102d3158fdf23af437ae25ed1926b1b069dc8e436fd16fb6';
 
@@ -11,9 +9,10 @@ interface MiniPriceChartProps {
   yesPrice: number; // Current YES price (0-1)
   height?: number;
   width?: number;
+  fpmmAddress: string;
 }
 
-export function MiniPriceChart({ yesPrice, height = 48, width = 120 }: MiniPriceChartProps) {
+export function MiniPriceChart({ yesPrice, height = 48, width = 120, fpmmAddress }: MiniPriceChartProps) {
   const [priceHistory, setPriceHistory] = useState<number[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -22,7 +21,7 @@ export function MiniPriceChart({ yesPrice, height = 48, width = 120 }: MiniPrice
       try {
         // Fetch events from Coston2 explorer API
         const response = await fetch(
-          `https://coston2-explorer.flare.network/api/v2/addresses/${CONTRACTS.fpmm}/logs`
+          `https://coston2-explorer.flare.network/api/v2/addresses/${fpmmAddress}/logs`
         );
         const data = await response.json();
 
@@ -65,7 +64,7 @@ export function MiniPriceChart({ yesPrice, height = 48, width = 120 }: MiniPrice
     }
 
     fetchEvents();
-  }, [yesPrice]);
+  }, [yesPrice, fpmmAddress]);
 
   const data = priceHistory.length >= 2 ? priceHistory : [0.5, yesPrice];
 

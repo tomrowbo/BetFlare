@@ -1,63 +1,53 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
 import { parseUnits, formatUnits } from 'viem';
 import { CONTRACTS, FPMM_ABI, ERC20_ABI } from '@/config/contracts';
+import { BetSlipSkeleton } from './Skeleton';
 
 interface BetSlipProps {
   side: 'yes' | 'no';
   disabled: boolean;
+  fpmmAddress: string;
+  resolved?: boolean;
+  isPastResolution?: boolean;
+  onTradeSuccess?: () => void;
 }
 
-export function BetSlip({ side, disabled }: BetSlipProps) {
+export function BetSlip({ side, disabled, fpmmAddress, resolved = false, isPastResolution = false, onTradeSuccess }: BetSlipProps) {
   const [amount, setAmount] = useState('');
   const [txSuccess, setTxSuccess] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStep, setProcessingStep] = useState<'idle' | 'approving' | 'buying'>('idle');
   const { address } = useAccount();
+  const publicClient = usePublicClient();
 
-  const { data: usdtBalance, refetch: refetchBalance } = useReadContract({
+  const { data: usdtBalance, refetch: refetchBalance, isLoading: isLoadingBalance } = useReadContract({
     address: CONTRACTS.usdt as `0x${string}`,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address] : undefined,
   });
 
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
+  const { data: allowance, refetch: refetchAllowance, isLoading: isLoadingAllowance } = useReadContract({
     address: CONTRACTS.usdt as `0x${string}`,
     abi: ERC20_ABI,
     functionName: 'allowance',
-    args: address ? [address, CONTRACTS.fpmm as `0x${string}`] : undefined,
+    args: address ? [address, fpmmAddress as `0x${string}`] : undefined,
   });
 
+  // Show skeleton if loading initial data and we have an address
+  const isInitialLoading = address && (isLoadingBalance || isLoadingAllowance);
+
   const { data: expectedTokens } = useReadContract({
-    address: CONTRACTS.fpmm as `0x${string}`,
+    address: fpmmAddress as `0x${string}`,
     abi: FPMM_ABI,
     functionName: side === 'yes' ? 'calcBuyYes' : 'calcBuyNo',
     args: amount && parseFloat(amount) > 0 ? [parseUnits(amount, 6)] : undefined,
   });
 
-  const { writeContract: approve, data: approveHash, reset: resetApprove } = useWriteContract();
-  const { writeContract: buy, data: buyHash, reset: resetBuy } = useWriteContract();
-
-  const { isLoading: isApproving, isSuccess: approveSuccess } = useWaitForTransactionReceipt({ hash: approveHash });
-  const { isLoading: isBuying, isSuccess: buySuccess } = useWaitForTransactionReceipt({ hash: buyHash });
-
-  useEffect(() => {
-    if (approveSuccess) {
-      refetchAllowance();
-      resetApprove();
-    }
-  }, [approveSuccess, refetchAllowance, resetApprove]);
-
-  useEffect(() => {
-    if (buySuccess && buyHash) {
-      setTxSuccess(buyHash);
-      refetchBalance();
-      setAmount('');
-      resetBuy();
-      setTimeout(() => setTxSuccess(null), 5000);
-    }
-  }, [buySuccess, buyHash, refetchBalance, resetBuy]);
+  const { writeContractAsync } = useWriteContract();
 
   const formattedBalance = usdtBalance ? formatUnits(usdtBalance as bigint, 6) : '0';
   const formattedExpected = expectedTokens ? formatUnits(expectedTokens as bigint, 6) : '0';
@@ -67,26 +57,98 @@ export function BetSlip({ side, disabled }: BetSlipProps) {
   const potentialProfit = Number(formattedExpected) - Number(amount);
   const avgPrice = Number(amount) > 0 ? (Number(amount) / Number(formattedExpected)).toFixed(2) : '0';
 
-  const handleApprove = () => {
-    approve({
-      address: CONTRACTS.usdt as `0x${string}`,
-      abi: ERC20_ABI,
-      functionName: 'approve',
-      args: [CONTRACTS.fpmm as `0x${string}`, parseUnits('1000000', 6)],
-    });
+  // Single-click buy with approval if needed
+  const handleBuy = async () => {
+    if (!amount || parseFloat(amount) <= 0 || !publicClient) return;
+
+    setIsProcessing(true);
+
+    try {
+      // Step 1: Approve if needed
+      if (needsApproval) {
+        setProcessingStep('approving');
+        const approveHash = await writeContractAsync({
+          address: CONTRACTS.usdt as `0x${string}`,
+          abi: ERC20_ABI,
+          functionName: 'approve',
+          args: [fpmmAddress as `0x${string}`, parseUnits('1000000', 6)],
+        });
+        // Wait for approval to be mined
+        await publicClient.waitForTransactionReceipt({ hash: approveHash });
+        await refetchAllowance();
+      }
+
+      // Step 2: Execute buy
+      setProcessingStep('buying');
+      const buyHash = await writeContractAsync({
+        address: fpmmAddress as `0x${string}`,
+        abi: FPMM_ABI,
+        functionName: side === 'yes' ? 'buyYes' : 'buyNo',
+        args: [parseUnits(amount, 6)],
+      });
+
+      // Wait for buy to be mined
+      await publicClient.waitForTransactionReceipt({ hash: buyHash });
+
+      // Success!
+      setTxSuccess(buyHash);
+      refetchBalance();
+      setAmount('');
+      if (onTradeSuccess) {
+        onTradeSuccess();
+      }
+      setTimeout(() => setTxSuccess(null), 5000);
+    } catch (error) {
+      console.error('Transaction failed:', error);
+    } finally {
+      setIsProcessing(false);
+      setProcessingStep('idle');
+    }
   };
 
-  const handleBuy = () => {
-    if (!amount || parseFloat(amount) <= 0) return;
-    buy({
-      address: CONTRACTS.fpmm as `0x${string}`,
-      abi: FPMM_ABI,
-      functionName: side === 'yes' ? 'buyYes' : 'buyNo',
-      args: [parseUnits(amount, 6)],
-    });
+  const getButtonText = () => {
+    if (processingStep === 'approving') return 'Approving...';
+    if (processingStep === 'buying') return 'Buying...';
+    if (needsApproval) return `Approve & Buy ${side.toUpperCase()}`;
+    return `Buy ${side.toUpperCase()}`;
   };
 
   const quickAmounts = ['1', '5', '10', '25'];
+
+  // Show skeleton while loading initial data
+  if (isInitialLoading) {
+    return <BetSlipSkeleton />;
+  }
+
+  // Show resolved message if market is resolved
+  if (resolved) {
+    return (
+      <div className="card">
+        <div className="text-center py-6">
+          <div className="text-4xl mb-3">🔒</div>
+          <h3 className="text-lg font-bold mb-2">Market Resolved</h3>
+          <p className="text-sm text-[--text-secondary]">
+            Trading has ended. Check your positions below to redeem winnings.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show awaiting resolution message if past resolution time
+  if (isPastResolution) {
+    return (
+      <div className="card">
+        <div className="text-center py-6">
+          <div className="text-4xl mb-3">⏳</div>
+          <h3 className="text-lg font-bold mb-2 text-[--accent-orange]">Trading Closed</h3>
+          <p className="text-sm text-[--text-secondary]">
+            Resolution time has passed. Click &quot;Resolve Market&quot; above to trigger the FTSO oracle and settle the market.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="card">
@@ -182,21 +244,13 @@ export function BetSlip({ side, disabled }: BetSlipProps) {
         <button className="btn btn-outline w-full py-3">
           Connect Wallet
         </button>
-      ) : needsApproval ? (
-        <button
-          onClick={handleApprove}
-          disabled={isApproving}
-          className="btn btn-primary w-full py-3"
-        >
-          {isApproving ? 'Approving...' : 'Approve USDT0'}
-        </button>
       ) : (
         <button
           onClick={handleBuy}
-          disabled={!amount || parseFloat(amount) <= 0 || isBuying}
+          disabled={!amount || parseFloat(amount) <= 0 || isProcessing}
           className={`btn w-full py-3 ${side === 'yes' ? 'btn-yes active' : 'btn-no active'}`}
         >
-          {isBuying ? 'Processing...' : `Buy ${side.toUpperCase()}`}
+          {getButtonText()}
         </button>
       )}
     </div>

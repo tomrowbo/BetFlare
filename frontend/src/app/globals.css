@@ -12,6 +12,7 @@
   --accent-red: #ef4444;
   --accent-blue: #3b82f6;
   --accent-yellow: #ffb80c;
+  --accent-orange: #f97316;
   --text-primary: #1a1a1a;
   --text-secondary: #6b7280;
   --text-muted: #9ca3af;
@@ -206,4 +207,18 @@ body {
 .tag-crypto {
   background: #f0fdf4;
   color: #16a34a;
+}
+
+/* Skeleton shimmer animation */
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
 }

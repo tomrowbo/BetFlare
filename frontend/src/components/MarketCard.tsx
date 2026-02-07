@@ -3,38 +3,61 @@
 import Image from 'next/image';
 import { useReadContract } from 'wagmi';
 import { formatUnits } from 'viem';
-import { CONTRACTS, FPMM_ABI } from '@/config/contracts';
+import { FPMM_ABI } from '@/config/contracts';
 import { PriceChart } from './PriceChart';
+import { MarketCardSkeleton } from './Skeleton';
 
 interface MarketCardProps {
   selectedSide: 'yes' | 'no';
   onSelectSide: (side: 'yes' | 'no') => void;
+  fpmmAddress: string;
+  title: string;
+  resolutionDate: string;
+  resolved?: boolean;
+  yesWon?: boolean | null;
+  isPastResolution?: boolean;
 }
 
-export function MarketCard({ selectedSide, onSelectSide }: MarketCardProps) {
-  const { data: yesPriceRaw } = useReadContract({
-    address: CONTRACTS.fpmm as `0x${string}`,
+export function MarketCard({
+  selectedSide,
+  onSelectSide,
+  fpmmAddress,
+  title,
+  resolutionDate,
+  resolved = false,
+  yesWon = null,
+  isPastResolution = false,
+}: MarketCardProps) {
+  const { data: yesPriceRaw, isLoading: isLoadingYes } = useReadContract({
+    address: fpmmAddress as `0x${string}`,
     abi: FPMM_ABI,
     functionName: 'getYesPrice',
   });
 
-  const { data: noPriceRaw } = useReadContract({
-    address: CONTRACTS.fpmm as `0x${string}`,
+  const { data: noPriceRaw, isLoading: isLoadingNo } = useReadContract({
+    address: fpmmAddress as `0x${string}`,
     abi: FPMM_ABI,
     functionName: 'getNoPrice',
   });
 
-  const { data: yesReserve } = useReadContract({
-    address: CONTRACTS.fpmm as `0x${string}`,
+  const { data: yesReserve, isLoading: isLoadingYesReserve } = useReadContract({
+    address: fpmmAddress as `0x${string}`,
     abi: FPMM_ABI,
     functionName: 'yesReserve',
   });
 
-  const { data: noReserve } = useReadContract({
-    address: CONTRACTS.fpmm as `0x${string}`,
+  const { data: noReserve, isLoading: isLoadingNoReserve } = useReadContract({
+    address: fpmmAddress as `0x${string}`,
     abi: FPMM_ABI,
     functionName: 'noReserve',
   });
+
+  const isLoading = isLoadingYes || isLoadingNo || isLoadingYesReserve || isLoadingNoReserve;
+
+  // Show skeleton while loading
+  if (isLoading) {
+    return <MarketCardSkeleton />;
+  }
 
   // Real data from contract
   const yesPrice = yesPriceRaw ? Number(formatUnits(yesPriceRaw as bigint, 18)) * 100 : 50;
@@ -56,16 +79,26 @@ export function MarketCard({ selectedSide, onSelectSide }: MarketCardProps) {
         <div className="flex-1">
           <div className="flex items-center gap-2 mb-1">
             <span className="tag tag-crypto">Crypto</span>
-            <span className="tag tag-live">
-              <span className="live-dot"></span>
-              LIVE
-            </span>
+            {resolved ? (
+              <span className={`tag ${yesWon ? 'bg-[--accent-green]/20 text-[--accent-green]' : 'bg-[--accent-red]/20 text-[--accent-red]'}`}>
+                {yesWon ? 'YES WON' : 'NO WON'}
+              </span>
+            ) : isPastResolution ? (
+              <span className="tag bg-[--accent-orange]/20 text-[--accent-orange]">
+                AWAITING
+              </span>
+            ) : (
+              <span className="tag tag-live">
+                <span className="live-dot"></span>
+                LIVE
+              </span>
+            )}
           </div>
           <h2 className="text-xl font-bold text-[--text-primary] mb-1">
-            Will XRP be above $3.00?
+            {title}
           </h2>
           <p className="text-sm text-[--text-secondary]">
-            Resolves Feb 7, 2026 at 19:00 UTC
+            Resolves {resolutionDate}
           </p>
         </div>
       </div>
@@ -91,30 +124,58 @@ export function MarketCard({ selectedSide, onSelectSide }: MarketCardProps) {
 
       {/* Chart */}
       <div className="mb-6">
-        <PriceChart yesPrice={yesPrice / 100} />
+        <PriceChart yesPrice={yesPrice / 100} fpmmAddress={fpmmAddress} />
       </div>
 
       {/* Yes/No Buttons - Polymarket style */}
-      <div className="flex gap-3 mb-6">
-        <button
-          onClick={() => onSelectSide('yes')}
-          className={`btn btn-yes flex-1 py-3 ${selectedSide === 'yes' ? 'active' : ''}`}
-        >
-          <div className="flex items-center justify-center gap-2">
-            <span className="font-semibold">Buy Yes</span>
-            <span className="opacity-75">{yesPercent}%</span>
+      {resolved ? (
+        <div className="flex gap-3 mb-6">
+          <div className={`flex-1 py-3 rounded-lg text-center ${
+            yesWon
+              ? 'bg-[--accent-green]/20 border-2 border-[--accent-green]'
+              : 'bg-gray-500/10 border border-gray-500/20 opacity-50'
+          }`}>
+            <div className="font-semibold">{yesWon ? 'YES Won' : 'YES Lost'}</div>
+            <div className="text-sm text-[--text-muted]">Paid $1.00</div>
           </div>
-        </button>
-        <button
-          onClick={() => onSelectSide('no')}
-          className={`btn btn-no flex-1 py-3 ${selectedSide === 'no' ? 'active' : ''}`}
-        >
-          <div className="flex items-center justify-center gap-2">
-            <span className="font-semibold">Buy No</span>
-            <span className="opacity-75">{noPercent}%</span>
+          <div className={`flex-1 py-3 rounded-lg text-center ${
+            !yesWon
+              ? 'bg-[--accent-red]/20 border-2 border-[--accent-red]'
+              : 'bg-gray-500/10 border border-gray-500/20 opacity-50'
+          }`}>
+            <div className="font-semibold">{!yesWon ? 'NO Won' : 'NO Lost'}</div>
+            <div className="text-sm text-[--text-muted]">Paid $1.00</div>
           </div>
-        </button>
-      </div>
+        </div>
+      ) : isPastResolution ? (
+        <div className="flex gap-3 mb-6">
+          <div className="flex-1 py-3 rounded-lg text-center bg-[--accent-orange]/10 border border-[--accent-orange]/30">
+            <div className="font-semibold text-[--accent-orange]">Trading Closed</div>
+            <div className="text-sm text-[--text-muted]">Awaiting oracle resolution</div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-3 mb-6">
+          <button
+            onClick={() => onSelectSide('yes')}
+            className={`btn btn-yes flex-1 py-3 ${selectedSide === 'yes' ? 'active' : ''}`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <span className="font-semibold">Buy Yes</span>
+              <span className="opacity-75">{yesPercent}%</span>
+            </div>
+          </button>
+          <button
+            onClick={() => onSelectSide('no')}
+            className={`btn btn-no flex-1 py-3 ${selectedSide === 'no' ? 'active' : ''}`}
+          >
+            <div className="flex items-center justify-center gap-2">
+              <span className="font-semibold">Buy No</span>
+              <span className="opacity-75">{noPercent}%</span>
+            </div>
+          </button>
+        </div>
+      )}
 
       {/* Stats Row - Only real data */}
       <div className="flex items-center gap-4 text-sm border-t border-[--border-color] pt-4">
