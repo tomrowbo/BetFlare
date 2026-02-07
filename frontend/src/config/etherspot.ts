@@ -8,8 +8,8 @@ export const ETHERSPOT_CONFIG = {
   // Flare Coston2 testnet
   chainId: 114,
 
-  // Arka paymaster URL with sponsor mode (we pay gas)
-  paymasterUrl: 'https://arka.etherspot.io/v2/114/etherspot_HRAmb3kXUy78d6nMpHnBpp',
+  // Arka paymaster URL - format from official docs
+  paymasterUrl: 'https://arka.etherspot.io',
 
   // Paymaster context for sponsored transactions
   paymasterContext: {

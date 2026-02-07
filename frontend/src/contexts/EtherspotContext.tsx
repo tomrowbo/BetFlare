@@ -47,16 +47,23 @@ export function EtherspotProvider({ children }: { children: ReactNode }) {
   const initializeWithPrivateKey = useCallback(async (privateKey: string): Promise<string> => {
     setIsInitializing(true);
     try {
+      console.log('[Etherspot] ====== INITIALIZATION START ======');
+      console.log('[Etherspot] Chain ID:', ETHERSPOT_CONFIG.chainId);
+      console.log('[Etherspot] API Key:', ETHERSPOT_CONFIG.apiKey);
+
       // Ensure private key has 0x prefix
       const formattedKey = privateKey.startsWith('0x') ? privateKey : `0x${privateKey}`;
 
       // Create bundler instance
+      console.log('[Etherspot] Creating EtherspotBundler...');
       const bundler = new EtherspotBundler(
         ETHERSPOT_CONFIG.chainId,
         ETHERSPOT_CONFIG.apiKey
       );
+      console.log('[Etherspot] Bundler created');
 
       // Initialize Prime SDK
+      console.log('[Etherspot] Creating PrimeSdk...');
       const sdk = new PrimeSdk(
         { privateKey: formattedKey },
         {
@@ -64,18 +71,23 @@ export function EtherspotProvider({ children }: { children: ReactNode }) {
           bundlerProvider: bundler,
         }
       );
+      console.log('[Etherspot] PrimeSdk created');
 
       // Get the counterfactual smart account address
+      console.log('[Etherspot] Getting counterfactual address...');
       const address = await sdk.getCounterFactualAddress();
 
       setPrimeSdk(sdk);
       setSmartAccountAddress(address);
       localStorage.setItem('etherspot_smart_account', address);
 
-      console.log('[Etherspot] Smart account initialized:', address);
+      console.log('[Etherspot] ====== INITIALIZATION SUCCESS ======');
+      console.log('[Etherspot] Smart account address:', address);
       return address;
-    } catch (error) {
-      console.error('[Etherspot] Failed to initialize:', error);
+    } catch (error: any) {
+      console.error('[Etherspot] ====== INITIALIZATION FAILED ======');
+      console.error('[Etherspot] Error:', error);
+      console.error('[Etherspot] Error message:', error?.message);
       throw error;
     } finally {
       setIsInitializing(false);
@@ -101,15 +113,23 @@ export function EtherspotProvider({ children }: { children: ReactNode }) {
         });
       }
 
+      // Build paymaster URL with query params as per Etherspot docs
+      const paymasterUrl = `${ETHERSPOT_CONFIG.paymasterUrl}?apiKey=${ETHERSPOT_CONFIG.apiKey}&chainId=${ETHERSPOT_CONFIG.chainId}`;
+
       console.log('[Etherspot] Estimating UserOp with paymaster...');
+      console.log('[Etherspot] Paymaster URL:', paymasterUrl);
+      console.log('[Etherspot] Chain ID:', ETHERSPOT_CONFIG.chainId);
+      console.log('[Etherspot] Context:', ETHERSPOT_CONFIG.paymasterContext);
 
       // Estimate with Arka paymaster for gasless execution
       const op = await primeSdk.estimate({
         paymasterDetails: {
-          url: ETHERSPOT_CONFIG.paymasterUrl,
+          url: paymasterUrl,
           context: ETHERSPOT_CONFIG.paymasterContext,
         },
       });
+
+      console.log('[Etherspot] UserOp estimated:', op);
 
       console.log('[Etherspot] Sending UserOp...');
 
@@ -121,8 +141,11 @@ export function EtherspotProvider({ children }: { children: ReactNode }) {
       // Wait for the transaction to be included
       // The userOpHash can be used to track status
       return userOpHash;
-    } catch (error) {
-      console.error('[Etherspot] Failed to send UserOp:', error);
+    } catch (error: any) {
+      console.error('[Etherspot] ====== SEND USEROP FAILED ======');
+      console.error('[Etherspot] Error:', error);
+      console.error('[Etherspot] Error message:', error?.message);
+      console.error('[Etherspot] Error data:', error?.data);
       throw error;
     }
   }, [primeSdk]);
