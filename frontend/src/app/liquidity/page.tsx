@@ -19,13 +19,26 @@ import {
   FPMM_ABI,
 } from '@/config/contracts';
 import { LiquidityPageSkeleton } from '@/components/Skeleton';
+import { XrplDepositFlow } from '@/components/xrpl';
+import { useCrossmark } from '@/hooks/useCrossmark';
+import { useSmartAccount } from '@/hooks/useSmartAccount';
 
 export default function LiquidityPage() {
   const { address, isConnected } = useAccount();
   const [amount, setAmount] = useState('');
   const [mode, setMode] = useState<'deposit' | 'withdraw'>('deposit');
+  const [walletType, setWalletType] = useState<'evm' | 'xrpl'>('evm');
   const [refreshKey, setRefreshKey] = useState(0);
   const queryClient = useQueryClient();
+
+  // XRPL wallet state
+  const { address: xrplAddress, isConnected: isXrplConnected } = useCrossmark();
+  const {
+    personalAccountAddress,
+    vaultBalance: xrplVaultBalance,
+    formattedVaultBalance: xrplFormattedVaultBalance,
+    refreshBalances: refreshXrplBalances,
+  } = useSmartAccount(xrplAddress);
 
   const { data: usdtBalance } = useReadContract({
     address: CONTRACTS.usdt as `0x${string}`,
@@ -103,13 +116,21 @@ export default function LiquidityPage() {
   const [netDeposited, setNetDeposited] = useState(0);
 
   const userProfit = useMemo(() => {
-    const currentBalance = Number(formattedShareValue);
+    const currentBalance = walletType === 'xrpl'
+      ? Number(xrplFormattedVaultBalance)
+      : Number(formattedShareValue);
     return currentBalance - netDeposited;
-  }, [formattedShareValue, netDeposited]);
+  }, [formattedShareValue, xrplFormattedVaultBalance, netDeposited, walletType]);
 
   useEffect(() => {
     async function fetchUserHistory() {
-      if (!address) {
+      // Determine which address to use based on wallet type
+      const targetAddress = walletType === 'xrpl' ? personalAccountAddress : address;
+      const currentBalance = walletType === 'xrpl'
+        ? Number(xrplFormattedVaultBalance)
+        : Number(formattedShareValue);
+
+      if (!targetAddress) {
         setChartData([]);
         return;
       }
@@ -118,7 +139,7 @@ export default function LiquidityPage() {
         const DEPOSIT_TOPIC = '0xdcbc1c05240f31ff3ad067ef1ee35ce4997762752e3a095284754544f4c709d7';
         const WITHDRAW_TOPIC = '0xfbde797d201c681b91056529119e0b02407c7bb96a4a2c75c01fc9667232c8db';
 
-        const userAddressPadded = `0x000000000000000000000000${address.slice(2).toLowerCase()}`;
+        const userAddressPadded = `0x000000000000000000000000${targetAddress.slice(2).toLowerCase()}`;
 
         const depositResponse = await fetch(
           `https://coston2-explorer.flare.network/api?module=logs&action=getLogs&address=${CONTRACTS.universalVault}&topic0=${DEPOSIT_TOPIC}&fromBlock=0&toBlock=latest`
@@ -191,7 +212,6 @@ export default function LiquidityPage() {
 
         setNetDeposited(totalDeposited - totalWithdrawn);
 
-        const currentBalance = Number(formattedShareValue);
         if (data.length === 1 || Math.abs(data[data.length - 1].value - currentBalance) > 0.01) {
           data.push({ time: 'Now', value: currentBalance, type: 'current' });
         }
@@ -201,13 +221,13 @@ export default function LiquidityPage() {
         console.error('Failed to fetch history:', err);
         setChartData([
           { time: 'Start', value: 0, type: 'start' },
-          { time: 'Now', value: Number(formattedShareValue), type: 'current' }
+          { time: 'Now', value: currentBalance, type: 'current' }
         ]);
       }
     }
 
     fetchUserHistory();
-  }, [address, formattedShareValue, depositSuccess, withdrawSuccess]);
+  }, [address, formattedShareValue, depositSuccess, withdrawSuccess, walletType, personalAccountAddress, xrplFormattedVaultBalance]);
 
   const marketLiquidity = useMemo(() => {
     if (!marketLiquidityData) return 0;
@@ -283,6 +303,14 @@ export default function LiquidityPage() {
     }
   }, [depositSuccess, withdrawSuccess, queryClient]);
 
+  // Refresh XRPL balances when switching wallet type or when connected
+  useEffect(() => {
+    if (walletType === 'xrpl' && isXrplConnected && personalAccountAddress) {
+      refreshXrplBalances();
+      setRefreshKey(prev => prev + 1);
+    }
+  }, [walletType, isXrplConnected, personalAccountAddress, refreshXrplBalances]);
+
   if (isLoadingVaultStats) {
     return (
       <main className="min-h-screen">
@@ -310,8 +338,41 @@ export default function LiquidityPage() {
             Liquidity <span className="text-primary">Pool</span>
           </h1>
           <p className="text-muted-foreground text-base font-light leading-relaxed mt-3 max-w-md mx-auto">
-            Deposit USDT0 to provide liquidity. Funds are immediately deployed to all markets.
+            Deposit USDT0 or XRP to provide liquidity. Funds are immediately deployed to all markets.
           </p>
+        </motion.div>
+
+        {/* Wallet Type Toggle */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.08, ease: [0.16, 1, 0.3, 1] }}
+          className="flex justify-center mb-6"
+        >
+          <div className="inline-flex p-1 rounded-lg bg-card/80 backdrop-blur-md border border-white/5">
+            <button
+              onClick={() => setWalletType('evm')}
+              className={cn(
+                "px-6 py-2 rounded-md text-sm font-display font-bold uppercase tracking-wide transition-all",
+                walletType === 'evm'
+                  ? 'bg-primary text-white shadow-lg'
+                  : 'text-white/40 hover:text-white/60'
+              )}
+            >
+              EVM Wallet
+            </button>
+            <button
+              onClick={() => setWalletType('xrpl')}
+              className={cn(
+                "px-6 py-2 rounded-md text-sm font-display font-bold uppercase tracking-wide transition-all",
+                walletType === 'xrpl'
+                  ? 'bg-blue-600 text-white shadow-lg'
+                  : 'text-white/40 hover:text-white/60'
+              )}
+            >
+              XRPL Wallet
+            </button>
+          </div>
         </motion.div>
 
         <motion.div
@@ -347,10 +408,12 @@ export default function LiquidityPage() {
           <div className="flex justify-between items-start mb-5">
             <div>
               <div className="text-[10px] uppercase tracking-[0.2em] font-bold text-white/30 mb-1">
-                Your Balance
+                Your Balance {walletType === 'xrpl' && '(Smart Account)'}
               </div>
               <div className="text-3xl font-display font-bold text-white">
-                ${Number(formattedShareValue).toFixed(2)}
+                ${walletType === 'xrpl'
+                  ? Number(xrplFormattedVaultBalance).toFixed(2)
+                  : Number(formattedShareValue).toFixed(2)}
               </div>
             </div>
             <div className="text-right">
@@ -407,115 +470,135 @@ export default function LiquidityPage() {
           </div>
         </motion.div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          className="relative overflow-hidden rounded-lg bg-card/80 backdrop-blur-md border border-white/5 p-5"
-        >
-          <div className="flex gap-2 mb-6">
-            <button
-              onClick={() => setMode('deposit')}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-display font-bold text-sm uppercase tracking-wide transition-all",
-                mode === 'deposit'
-                  ? 'bg-green-500 text-white shadow-[0_0_20px_rgba(34,197,94,0.15)]'
-                  : 'bg-white/[0.03] border border-white/5 text-white/40 hover:text-white/60 hover:border-white/10'
-              )}
-            >
-              <ArrowDownToLine className="w-4 h-4" />
-              Deposit
-            </button>
-            <button
-              onClick={() => setMode('withdraw')}
-              className={cn(
-                "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-display font-bold text-sm uppercase tracking-wide transition-all",
-                mode === 'withdraw'
-                  ? 'bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.15)]'
-                  : 'bg-white/[0.03] border border-white/5 text-white/40 hover:text-white/60 hover:border-white/10'
-              )}
-            >
-              <ArrowUpFromLine className="w-4 h-4" />
-              Withdraw
-            </button>
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-white/30 mb-2">
-              Amount (USDT0)
-            </label>
-            <div className="relative">
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                className="w-full bg-white/[0.03] border border-white/5 rounded-lg px-4 py-3.5 text-xl font-mono text-white placeholder:text-white/15 focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all pr-20"
-                disabled={!isConnected}
-              />
+        {/* EVM Wallet Interface */}
+        {walletType === 'evm' && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="relative overflow-hidden rounded-lg bg-card/80 backdrop-blur-md border border-white/5 p-5"
+          >
+            <div className="flex gap-2 mb-6">
               <button
-                onClick={() => setAmount(mode === 'deposit' ? formattedUsdtBalance : formattedShareValue)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] uppercase tracking-[0.15em] font-bold text-primary hover:text-primary/80 transition-colors"
+                onClick={() => setMode('deposit')}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-display font-bold text-sm uppercase tracking-wide transition-all",
+                  mode === 'deposit'
+                    ? 'bg-green-500 text-white shadow-[0_0_20px_rgba(34,197,94,0.15)]'
+                    : 'bg-white/[0.03] border border-white/5 text-white/40 hover:text-white/60 hover:border-white/10'
+                )}
               >
-                MAX
+                <ArrowDownToLine className="w-4 h-4" />
+                Deposit
+              </button>
+              <button
+                onClick={() => setMode('withdraw')}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-2 py-3 rounded-lg font-display font-bold text-sm uppercase tracking-wide transition-all",
+                  mode === 'withdraw'
+                    ? 'bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.15)]'
+                    : 'bg-white/[0.03] border border-white/5 text-white/40 hover:text-white/60 hover:border-white/10'
+                )}
+              >
+                <ArrowUpFromLine className="w-4 h-4" />
+                Withdraw
               </button>
             </div>
-            <div className="text-xs text-white/30 mt-2 font-mono">
-              {mode === 'deposit'
-                ? `Balance: ${Number(formattedUsdtBalance).toFixed(2)} USDT0`
-                : `Available: ${Number(formattedShareValue).toFixed(2)} USDT0`
-              }
-            </div>
-          </div>
 
-          {!isConnected ? (
-            <ConnectButton.Custom>
-              {({ openConnectModal }) => (
+            <div className="mb-6">
+              <label className="block text-[10px] uppercase tracking-[0.2em] font-bold text-white/30 mb-2">
+                Amount (USDT0)
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full bg-white/[0.03] border border-white/5 rounded-lg px-4 py-3.5 text-xl font-mono text-white placeholder:text-white/15 focus:outline-none focus:border-primary/40 focus:ring-1 focus:ring-primary/20 transition-all pr-20"
+                  disabled={!isConnected}
+                />
                 <button
-                  onClick={openConnectModal}
-                  className="w-full flex items-center justify-center gap-2 py-4 rounded-lg border border-white/10 bg-white/[0.03] text-white/60 font-display font-bold text-sm uppercase tracking-wide hover:border-primary/30 hover:text-white transition-all"
+                  onClick={() => setAmount(mode === 'deposit' ? formattedUsdtBalance : formattedShareValue)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] uppercase tracking-[0.15em] font-bold text-primary hover:text-primary/80 transition-colors"
                 >
-                  <Wallet className="w-4 h-4" />
-                  Connect Wallet
+                  MAX
                 </button>
-              )}
-            </ConnectButton.Custom>
-          ) : (
-            <button
-              onClick={mode === 'deposit' ? handleDeposit : handleWithdraw}
-              disabled={!amount || isLoading}
-              className={cn(
-                "w-full py-4 rounded-lg font-display font-bold text-sm uppercase tracking-wide transition-all disabled:opacity-40 disabled:cursor-not-allowed",
-                mode === 'deposit'
-                  ? 'bg-green-500 text-white hover:bg-green-500/80 shadow-[0_0_25px_rgba(34,197,94,0.15)]'
-                  : 'bg-red-500 text-white hover:bg-red-500/80 shadow-[0_0_25px_rgba(239,68,68,0.15)]'
-              )}
-            >
-              {isApproving
-                ? 'Approving...'
-                : isDepositing
-                ? 'Depositing...'
-                : isWithdrawing
-                ? 'Withdrawing...'
-                : mode === 'deposit'
-                ? 'Deposit'
-                : 'Withdraw'}
-            </button>
-          )}
+              </div>
+              <div className="text-xs text-white/30 mt-2 font-mono">
+                {mode === 'deposit'
+                  ? `Balance: ${Number(formattedUsdtBalance).toFixed(2)} USDT0`
+                  : `Available: ${Number(formattedShareValue).toFixed(2)} USDT0`
+                }
+              </div>
+            </div>
 
-          {(depositSuccess || withdrawSuccess) && (
-            <motion.div
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="mt-4 flex items-center justify-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20"
-            >
-              <CheckCircle2 className="w-4 h-4 text-green-400" />
-              <span className="text-sm font-display font-semibold text-green-400">
-                Transaction successful!
-              </span>
-            </motion.div>
-          )}
-        </motion.div>
+            {!isConnected ? (
+              <ConnectButton.Custom>
+                {({ openConnectModal }) => (
+                  <button
+                    onClick={openConnectModal}
+                    className="w-full flex items-center justify-center gap-2 py-4 rounded-lg border border-white/10 bg-white/[0.03] text-white/60 font-display font-bold text-sm uppercase tracking-wide hover:border-primary/30 hover:text-white transition-all"
+                  >
+                    <Wallet className="w-4 h-4" />
+                    Connect Wallet
+                  </button>
+                )}
+              </ConnectButton.Custom>
+            ) : (
+              <button
+                onClick={mode === 'deposit' ? handleDeposit : handleWithdraw}
+                disabled={!amount || isLoading}
+                className={cn(
+                  "w-full py-4 rounded-lg font-display font-bold text-sm uppercase tracking-wide transition-all disabled:opacity-40 disabled:cursor-not-allowed",
+                  mode === 'deposit'
+                    ? 'bg-green-500 text-white hover:bg-green-500/80 shadow-[0_0_25px_rgba(34,197,94,0.15)]'
+                    : 'bg-red-500 text-white hover:bg-red-500/80 shadow-[0_0_25px_rgba(239,68,68,0.15)]'
+                )}
+              >
+                {isApproving
+                  ? 'Approving...'
+                  : isDepositing
+                  ? 'Depositing...'
+                  : isWithdrawing
+                  ? 'Withdrawing...'
+                  : mode === 'deposit'
+                  ? 'Deposit'
+                  : 'Withdraw'}
+              </button>
+            )}
+
+            {(depositSuccess || withdrawSuccess) && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-4 flex items-center justify-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20"
+              >
+                <CheckCircle2 className="w-4 h-4 text-green-400" />
+                <span className="text-sm font-display font-semibold text-green-400">
+                  Transaction successful!
+                </span>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+
+        {/* XRPL Wallet Interface */}
+        {walletType === 'xrpl' && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
+            className="relative overflow-hidden rounded-lg bg-card/80 backdrop-blur-md border border-white/5 p-5"
+          >
+            <XrplDepositFlow
+              onDepositComplete={() => {
+                refreshXrplBalances();
+                setRefreshKey(prev => prev + 1);
+              }}
+            />
+          </motion.div>
+        )}
 
         <motion.div
           initial={{ opacity: 0, y: 12 }}
@@ -525,7 +608,9 @@ export default function LiquidityPage() {
         >
           <Info className="w-3.5 h-3.5 text-white/20 shrink-0" />
           <span className="text-xs text-white/30 font-light">
-            Earn 0.2% fee on every trade. Liquidity is split equally across all active markets.
+            {walletType === 'evm'
+              ? 'Earn 0.2% fee on every trade. Liquidity is split equally across all active markets.'
+              : 'Deposit XRP directly from your XRPL wallet. XRP is bridged to FXRP, swapped to USDT, and deposited into the pool.'}
           </span>
         </motion.div>
       </PageContainer>

@@ -13,6 +13,12 @@ const config: HardhatUserConfig = {
       },
     },
   },
+  paths: {
+    sources: "./contracts",
+    cache: "./cache",
+    artifacts: "./artifacts",
+    tests: "./test",
+  },
   networks: {
     hardhat: {},
     coston2: {
