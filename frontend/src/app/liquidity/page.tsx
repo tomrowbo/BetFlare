@@ -37,6 +37,7 @@ export default function LiquidityPage() {
     personalAccountAddress,
     vaultBalance: xrplVaultBalance,
     formattedVaultBalance: xrplFormattedVaultBalance,
+    formattedVaultValue: xrplFormattedVaultValue,
     refreshBalances: refreshXrplBalances,
   } = useSmartAccount(xrplAddress);
 
@@ -117,17 +118,17 @@ export default function LiquidityPage() {
 
   const userProfit = useMemo(() => {
     const currentBalance = walletType === 'xrpl'
-      ? Number(xrplFormattedVaultBalance)
+      ? Number(xrplFormattedVaultValue)
       : Number(formattedShareValue);
     return currentBalance - netDeposited;
-  }, [formattedShareValue, xrplFormattedVaultBalance, netDeposited, walletType]);
+  }, [formattedShareValue, xrplFormattedVaultValue, netDeposited, walletType]);
 
   useEffect(() => {
     async function fetchUserHistory() {
       // Determine which address to use based on wallet type
       const targetAddress = walletType === 'xrpl' ? personalAccountAddress : address;
       const currentBalance = walletType === 'xrpl'
-        ? Number(xrplFormattedVaultBalance)
+        ? Number(xrplFormattedVaultValue)
         : Number(formattedShareValue);
 
       if (!targetAddress) {
@@ -227,7 +228,7 @@ export default function LiquidityPage() {
     }
 
     fetchUserHistory();
-  }, [address, formattedShareValue, depositSuccess, withdrawSuccess, walletType, personalAccountAddress, xrplFormattedVaultBalance]);
+  }, [address, formattedShareValue, depositSuccess, withdrawSuccess, walletType, personalAccountAddress, xrplFormattedVaultValue]);
 
   const marketLiquidity = useMemo(() => {
     if (!marketLiquidityData) return 0;
@@ -412,7 +413,7 @@ export default function LiquidityPage() {
               </div>
               <div className="text-3xl font-display font-bold text-white">
                 ${walletType === 'xrpl'
-                  ? Number(xrplFormattedVaultBalance).toFixed(2)
+                  ? Number(xrplFormattedVaultValue).toFixed(2)
                   : Number(formattedShareValue).toFixed(2)}
               </div>
             </div>

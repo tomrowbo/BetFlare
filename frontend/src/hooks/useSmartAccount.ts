@@ -10,6 +10,7 @@ import {
   getAgentVaults,
   getFxrpBalance,
   getVaultBalance,
+  convertSharesToAssets,
   getFxrpDecimals,
   publicClient,
   SMART_ACCOUNTS_CONFIG,
@@ -26,6 +27,7 @@ interface SmartAccountState {
   fxrpBalance: bigint;
   fxrpDecimals: number;
   vaultBalance: bigint;
+  vaultValue: bigint; // USD value of vault shares
   isLoading: boolean;
   error: string | null;
 }
@@ -45,6 +47,7 @@ export function useSmartAccount(xrplAddress: string | null) {
     fxrpBalance: 0n,
     fxrpDecimals: 6,
     vaultBalance: 0n,
+    vaultValue: 0n,
     isLoading: false,
     error: null,
   });
@@ -59,6 +62,7 @@ export function useSmartAccount(xrplAddress: string | null) {
         personalAccountAddress: null,
         fxrpBalance: 0n,
         vaultBalance: 0n,
+        vaultValue: 0n,
       }));
       return;
     }
@@ -80,6 +84,9 @@ export function useSmartAccount(xrplAddress: string | null) {
           getVaultBalance(personalAccountAddress),
         ]);
 
+        // Convert shares to USD value
+        const vaultValue = await convertSharesToAssets(vaultBalance);
+
         setState({
           personalAccountAddress,
           operatorAddresses,
@@ -87,6 +94,7 @@ export function useSmartAccount(xrplAddress: string | null) {
           fxrpBalance,
           fxrpDecimals,
           vaultBalance,
+          vaultValue,
           isLoading: false,
           error: null,
         });
@@ -112,7 +120,10 @@ export function useSmartAccount(xrplAddress: string | null) {
         getVaultBalance(state.personalAccountAddress),
       ]);
 
-      setState((prev) => ({ ...prev, fxrpBalance, vaultBalance }));
+      // Convert shares to USD value
+      const vaultValue = await convertSharesToAssets(vaultBalance);
+
+      setState((prev) => ({ ...prev, fxrpBalance, vaultBalance, vaultValue }));
     } catch (error) {
       console.error('Failed to refresh balances:', error);
     }
@@ -287,10 +298,16 @@ export function useSmartAccount(xrplAddress: string | null) {
     return formatUnits(state.vaultBalance, 6); // Vault shares are 6 decimals (same as USDT)
   }, [state.vaultBalance]);
 
+  // USD value of vault shares
+  const formattedVaultValue = useMemo(() => {
+    return formatUnits(state.vaultValue, 6); // USDT has 6 decimals
+  }, [state.vaultValue]);
+
   return {
     ...state,
     formattedFxrpBalance,
     formattedVaultBalance,
+    formattedVaultValue,
     pendingDeposit,
     refreshBalances,
     watchForDeposit,

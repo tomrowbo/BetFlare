@@ -180,6 +180,28 @@ export async function getVaultBalance(address: Address): Promise<bigint> {
 }
 
 /**
+ * Convert vault shares to underlying asset value (USDT)
+ */
+export async function convertSharesToAssets(shares: bigint): Promise<bigint> {
+  if (shares === 0n) return 0n;
+
+  const assets = await publicClient.readContract({
+    address: SMART_ACCOUNTS_CONFIG.UNIVERSAL_VAULT,
+    abi: [{
+      name: 'convertToAssets',
+      type: 'function',
+      stateMutability: 'view',
+      inputs: [{ name: 'shares', type: 'uint256' }],
+      outputs: [{ name: '', type: 'uint256' }],
+    }],
+    functionName: 'convertToAssets',
+    args: [shares],
+  });
+
+  return assets;
+}
+
+/**
  * Get USDT balance for an address
  */
 export async function getUsdtBalance(address: Address): Promise<bigint> {
